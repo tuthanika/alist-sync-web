@@ -4,6 +4,17 @@ import logging
 import subprocess
 import os
 import json
+# import datetime
+# import pytz
+import croniter, datetime, time
+
+from crontab import CronTab
+# from crontab import CronTab
+# import datetime
+
+from apscheduler.triggers.cron import CronTrigger
+
+
 from alist_sync import create_connection, get_token, get_storage_list
 
 import signal
@@ -141,6 +152,107 @@ def run_task():
     # 这里可以添加真实的任务执行逻辑，比如调用相关同步任务执行的函数等，简化示例直接返回成功
     return jsonify({"code": 200, "message": "任务已启动"})
 
+
+@app.route('/api/next-run-time', methods=['POST'])
+def next_run_time():
+    # Cron 表达式解析与时间计算
+    try:
+        data = request.get_json()
+        cron_expression = data.get('cron')
+        if not cron_expression:
+            return jsonify({"code": 400, "message": "缺少cron参数"}), 400
+        # 简单校验，如果末尾是?就去除（只是简单处理，更严谨校验可完善此处）
+        # 替换问号为星号
+        # modified_cron = cron_expression.replace('?', '*')
+        # 找到第一个空格的索引位置，然后从该位置往后取字符串
+        # index_of_first_space = modified_cron.find(' ')
+        # new_cron = modified_cron[index_of_first_space + 1:]
+        next_time_list = CrontabRunNextTime(cron_expression)
+        return jsonify({"code": 200, "data": next_time_list})
+    except Exception as e:
+        return jsonify({"code": 500, "message": f"解析出错: {str(e)}"}), 500
+
+
+
+
+def datetime_to_timestamp(timestring, format="%Y-%m-%d %H:%M:%S"):
+    """ 将普通时间格式转换为时间戳(10位), 形如 '2016-05-05 20:28:54'，由format指定 """
+    try:
+        # 转换成时间数组
+        timeArray = time.strptime(timestring, format)
+    except Exception:
+        raise
+    else:
+        # 转换成10位时间戳
+        return int(time.mktime(timeArray))
+
+def get_current_timestamp():
+    """ 获取本地当前时间戳(10位): Unix timestamp：是从1970年1月1日（UTC/GMT的午夜）开始所经过的秒数，不考虑闰秒 """
+    return int(time.mktime(datetime.datetime.now().timetuple()))
+
+def timestamp_after_timestamp(timestamp=None, seconds=0, minutes=0, hours=0, days=0):
+    """ 给定时间戳(10位),计算该时间戳之后多少秒、分钟、小时、天的时间戳(本地时间) """
+    # 1. 默认时间戳为当前时间
+    timestamp = get_current_timestamp() if timestamp is None else timestamp
+    # 2. 先转换为datetime
+    d1 = datetime.datetime.fromtimestamp(timestamp)
+    # 3. 根据相关时间得到datetime对象并相加给定时间戳的时间
+    d2 = d1 + datetime.timedelta(seconds=int(seconds), minutes=int(minutes), hours=int(hours), days=int(days))
+    # 4. 返回某时间后的时间戳
+    return int(time.mktime(d2.timetuple()))
+
+
+def timestamp_datetime(timestamp, format='%Y-%m-%d %H:%M:%S'):
+    """ 将时间戳(10位)转换为可读性的时间 """
+    # timestamp为传入的值为时间戳(10位整数)，如：1332888820
+    timestamp = time.localtime(timestamp)
+    # 经过localtime转换后变成
+    ## time.struct_time(tm_year=2012, tm_mon=3, tm_mday=28, tm_hour=6, tm_min=53, tm_sec=40, tm_wday=2, tm_yday=88, tm_isdst=0)
+    # 最后再经过strftime函数转换为正常日期格式。
+    return time.strftime(format, timestamp)
+
+def CrontabRunNextTime(sched, timeFormat="%Y-%m-%d %H:%M:%S", queryTimes=5):
+    """计算定时任务下次运行时间
+    sched str: 定时任务时间表达式
+    timeFormat str: 格式为"%Y-%m-%d %H:%M"
+    queryTimes int: 查询下次运行次数
+    """
+    try:
+        now = datetime.datetime.now()
+    except ValueError:
+        raise
+    else:
+        # 以当前时间为基准开始计算
+        cron = croniter.croniter(sched, now)
+        return [ cron.get_next(datetime.datetime).strftime(timeFormat) for i in range(queryTimes) ]
+
+def CrontabRunTime(sched, ctime, timeFormat="%Y-%m-%d %H:%M:%S"):
+    """计算定时任务运行次数
+    sched str: 定时任务时间表达式
+    ctime str: 定时任务创建的时间，与timeFormat格式对应
+    timeFormat str: 格式为"%Y-%m-%d %H:%M"
+    """
+    try:
+        ctimeStrp = datetime.datetime.strptime(ctime, timeFormat)
+    except ValueError:
+        raise
+    else:
+        # 根据定时任务创建时间开始计算
+        cron = croniter.croniter(sched, ctimeStrp)
+        now = get_current_timestamp()
+        num = 0
+        while 1:
+            timestring = cron.get_next(datetime.datetime).strftime(timeFormat)
+            timestamp = datetime_to_timestamp(timestring, "%Y-%m-%d %H:%M:%S")
+            if timestamp > now:
+                break
+            else:
+                num += 1
+        return num
+
+
+
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
@@ -168,6 +280,11 @@ def index():
 
         return f"执行结果日志已记录，你可以查看日志详情。<br>返回码: {result.returncode}"
     return render_template('index.html')
+
+
+
+
+
 
 if __name__ == '__main__':
     app.run(debug=True)
