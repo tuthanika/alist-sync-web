@@ -44,7 +44,7 @@
       <h1>Alist-Sync 配置中心</h1>
     </div>
 
-    <form class="layui-form" action="">
+    <form class="layui-form" action="javascript:void(0);">
       <!-- 基础参数设置 -->
       <div class="layui-card">
         <div class="layui-card-header">基础连接参数</div>
@@ -206,7 +206,7 @@
       <!-- 操作按钮 -->
       <div class="layui-form-item" style="margin-top: 15px;">
         <div class="layui-input-block" style="margin-left: 110px;">
-          <button class="layui-btn" lay-submit lay-filter="saveSyncConfig">保存同步配置</button>
+          <button type="button" class="layui-btn" id="saveSyncConfig">保存同步配置</button>
           <button type="button" class="layui-btn layui-btn-normal" id="runTask">立即执行</button>
           <button type="reset" class="layui-btn layui-btn-primary">重置</button>
         </div>
@@ -588,15 +588,37 @@
       });
     }
 
-    // 修改保存同步配置的事件处理
-    form.on('submit(saveSyncConfig)', function(data){
+    // 使用click事件绑定
+    $('#saveSyncConfig').on('click', function() {
       var tasks = collectTaskData();
       if(!validateTasks(tasks)) {
-        return false;
+        return;
       }
       saveSyncConfig(tasks);
-      return false;
     });
+
+    // 保存同步配置的函数
+    function saveSyncConfig(tasks) {
+      layer.load(1);
+      $.ajax({
+        url: '/api/save-sync-config',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ tasks: tasks }),
+        success: function(res){
+          layer.closeAll('loading');
+          if(res.code === 200) {
+            layer.msg('同步配置保存成功');
+          } else {
+            layer.msg('保存失败: ' + (res.message || '未知错误'));
+          }
+        },
+        error: function(xhr, status, error){
+          layer.closeAll('loading');
+          layer.msg('请求失败: ' + (error || '未知错误'));
+        }
+      });
+    }
 
     // 添加任务数据验证
     function validateTasks(tasks) {
@@ -674,24 +696,6 @@
       return tasks;
     }
 
-    function saveSyncConfig(tasks) {
-      layer.load(1);
-      $.ajax({
-        url: '/api/save-sync-config',
-        method: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify({ tasks: tasks }),
-        success: function(res){
-          layer.closeAll('loading');
-          layer.msg(res.code === 200 ? '同步配置保存成功' : '保存失败: ' + res.message);
-        },
-        error: function(){
-          layer.closeAll('loading');
-          layer.msg('请求失败');
-        }
-      });
-    }
-
     // 修改立即执行的处理
     $('#runTask').on('click', function(){
       var tasks = collectTaskData();
@@ -714,7 +718,7 @@
         data: JSON.stringify({ tasks: tasks }),
         success: function(res){
           layer.closeAll('loading');
-          layer.msg(res.code === 0 ? '任务已启动' : '启动失败: ' + res.msg);
+          layer.msg(res.code === 0 ? '任务已启动' : '同步失败: ' + res.msg);
         },
         error: function(){
           layer.closeAll('loading');
@@ -781,7 +785,7 @@
           });
         }
       } else {
-        // 文件同步模式
+        // 文���同步模式
         $task.find('.data-sync-config').hide();
         $task.find('.file-sync-config').show();
 
