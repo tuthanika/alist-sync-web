@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Alist-Sync 配置</title>
   <link href="../static/layui/css/layui.css" rel="stylesheet">
+  <link rel="icon" href="data:,">
   
   <style>
     .main-container {
@@ -31,16 +32,28 @@
       padding: 5px 0;
       line-height: 1.8;
       color: #666;
+      min-height: 30px;
+      background-color: #f8f8f8;
+      border-radius: 2px;
     }
     .next-run-time div {
       margin-bottom: 3px;
+      padding: 0 10px;
     }
   </style>
 </head>
 <body>
+  <div class="layui-container">
+    <div id="loading" style="display: none;">
+      <i class="layui-icon layui-icon-loading layui-anim layui-anim-rotate layui-anim-loop"></i>
+      正在加载配置...
+    </div>
+  </div>
+
   <div class="main-container">
     <div class="page-header">
-      <img src="../static/images/logo.png" alt="Alist-Sync">
+      <!-- 如果没有logo图片，可以注释或删除下面这行 -->
+      <!-- <img src="../static/images/logo.png" alt="Alist-Sync"> -->
       <h1>Alist-Sync 配置中心</h1>
     </div>
 
@@ -81,6 +94,12 @@
               <button type="reset" class="layui-btn layui-btn-primary">重置</button>
             </div>
           </div>
+
+          <div class="layui-form-item">
+            <div class="layui-input-block">
+              <button type="button" class="layui-btn layui-btn-normal" id="changePassword">修改登录密码</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -97,7 +116,7 @@
           <div id="taskList">
             <!-- 任务模板 -->
             <div class="task-item" data-task-id="1">
-              <!-- 任务名称 -->
+              <!-- 任务名 -->
               <div class="layui-form-item">
                 <label class="layui-form-label">任务名称</label>
                 <div class="layui-input-inline">
@@ -189,10 +208,10 @@
                 </div>
               </div>
 
-              <!-- 在定时调度器后添加下次执行时间显示 -->
+              <!-- 在定时调度器后添加执行时间显示 -->
               <div class="layui-form-item">
-                <label class="layui-form-label">下次执行时间</label>
-                <div class="layui-input-inline">
+                <label class="layui-form-label">执行时间</label>
+                <div class="layui-input-inline" style="width: 400px;">
                   <div class="next-run-time" style="padding: 9px 15px; line-height: 20px; color: #666;"></div>
                 </div>
               </div>
@@ -216,6 +235,50 @@
 
   <script src="../static/layui/layui.js"></script>
 
+  <script type="text/html" id="changePasswordTpl">
+    <form class="layui-form" style="padding: 20px;" lay-filter="changePasswordForm">
+      <div class="layui-form-item">
+        <label class="layui-form-label">当前用户名</label>
+        <div class="layui-input-block">
+          <input type="text" name="oldUsername" class="layui-input" disabled>
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">新用户名</label>
+        <div class="layui-input-block">
+          <input type="text" name="newUsername" required lay-verify="required" 
+            placeholder="请输入新用户名" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">原密码</label>
+        <div class="layui-input-block">
+          <input type="password" name="oldPassword" required lay-verify="required" 
+            placeholder="请输入原密码" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">新密码</label>
+        <div class="layui-input-block">
+          <input type="password" name="newPassword" required lay-verify="required" 
+            placeholder="请输入新密码" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">确认密码</label>
+        <div class="layui-input-block">
+          <input type="password" name="confirmPassword" required lay-verify="required" 
+            placeholder="请再次输入新密码" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <div class="layui-input-block">
+          <button class="layui-btn" lay-submit lay-filter="changePasswordSubmit">确认修改</button>
+        </div>
+      </div>
+    </form>
+  </script>
+
   <script>
   layui.use(['form', 'layer'], function(){
     var form = layui.form,
@@ -223,18 +286,22 @@
         $ = layui.$;
 
     // 加载存储器列表
-    function loadStorages() {
-      $.ajax({
-        url: '/api/storages',
-        method: 'GET',
-        success: function(res) {
-          if(res.code === 200) {
-            updateStorageSelects(res.data);
-            updateStorageCheckboxes(res.data);
-            form.render();
-          }
+    async function loadStorages() {
+      try {
+        const storagesRes = await $.ajax({
+          url: '/api/storages',
+          method: 'GET'
+        });
+
+        if(storagesRes.code === 200) {
+          updateStorageSelects(storagesRes.data);
+          updateStorageCheckboxes(storagesRes.data);
+          form.render();
         }
-      });
+      } catch(error) {
+        console.error('加载存储器列表失败:', error);
+        layer.msg('加载存储器列表失败: ' + (error.message || '未知错误'));
+      }
     }
 
     // 更新源存储器下拉框
@@ -244,7 +311,7 @@
         $select.empty().append('<option value="">请选择</option>');
         data.forEach(function(storage) {
           $select.append(
-            '<option value="' + storage + '">' + storage.replace('/dav/', '') + '</option>'
+            '<option value="' + storage + '">' + storage + '</option>'
           );
         });
       });
@@ -260,7 +327,7 @@
         data.forEach(function(storage) {
           $targetDiv.append(
             '<input type="checkbox" name="targetStorages_' + taskId + '[]" value="' +
-            storage + '" title="' + storage.replace('/dav/', '') + '" lay-skin="primary">'
+            storage + '" title="' + storage + '" lay-skin="primary">'
           );
         });
       });
@@ -339,49 +406,48 @@
       $container.append($pathPair);
     }
 
-    // 获取下次执行时间
-    function updateNextRunTime($task, cronValue) {
-      if(!cronValue) return;
-      
-      layer.load(1);
-      
-      $.ajax({
-        url: '/api/next-run-time',
-        method: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify({ cron: cronValue }),
-        success: function(res) {
-          layer.closeAll('loading');
-          if(res.code === 200) {
-            var $container = $task.find('.next-run-time');
-            $container.empty();
-            
-            // 将每个时间点作为新行显示
-            res.data.forEach(function(time) {
-              $container.append(
-                $('<div>').text(time)
-              );
-            });
-          } else {
-            layer.msg('获取下次执行时间失败: ' + (res.message || '未知错误'));
-          }
-        },
-        error: function(xhr, status, error) {
-          layer.closeAll('loading');
-          layer.msg('请求失败: ' + (error || '未知错误'));
+    // 添加更新下次运行时间的函数
+    async function updateNextRunTime($task, cronValue) {
+      try {
+        layer.load(1);
+        const res = await $.ajax({
+          url: '/api/next-run-time',
+          method: 'POST',
+          contentType: 'application/json',
+          data: JSON.stringify({ cron: cronValue })
+        });
+
+        layer.closeAll('loading');
+
+        if(res.code === 200) {
+          const $nextRunTime = $task.find('.next-run-time');
+          $nextRunTime.empty();
+
+          // 显示未来5次运行时间
+          res.data.forEach((time, index) => {
+            $nextRunTime.append(
+              `<div>第${index + 1}次: ${time}</div>`
+            );
+          });
+        } else {
+          layer.msg(res.message || 'cron表达式无效');
         }
-      });
+      } catch(error) {
+        layer.closeAll('loading');
+        console.error('获取下次运行时间失败:', error);
+        layer.msg('获取下次运行时间失败: ' + (error.message || '未知错误'));
+      }
     }
 
     $('.check-next-time').on('click', function() {
       var $task = $(this).closest('.task-item');
       var cronValue = $task.find('.cron-input').val();
-      
+
       if(!cronValue) {
         layer.msg('请先填写cron表达式');
         return;
       }
-      
+
       updateNextRunTime($task, cronValue);
     });
 
@@ -430,25 +496,17 @@
     // 创建新任务
     function createNewTask(taskId) {
       var $newTask = $('.task-item:first').clone();
+      $newTask.attr('data-task-id', taskId);
       updateTaskIds($newTask, taskId);
-      clearTaskInputs($newTask);
 
-      // 设置默认配置
-      $newTask.find('.data-sync-config').show();
-      $newTask.find('.file-sync-config').hide();
-      $newTask.find('input[name^="syncMode_"][value="data"]').prop('checked', true);
-
-      // 重新绑定新任务的查看时间按钮事件
-      $newTask.find('.check-next-time').on('click', function() {
-        var $task = $(this).closest('.task-item');
-        var cronValue = $task.find('.cron-input').val();
-        
+      // 重新绑定查看时间按钮事件
+      $newTask.find('.check-next-time').off('click').on('click', function() {
+        var cronValue = $newTask.find('input[name="cron[]"]').val();
         if(!cronValue) {
           layer.msg('请先填写cron表达式');
           return;
         }
-        
-        updateNextRunTime($task, cronValue);
+        updateNextRunTime($newTask, cronValue);
       });
 
       return $newTask;
@@ -599,6 +657,13 @@
 
     // 保存同步配置的函数
     function saveSyncConfig(tasks) {
+      // 确保每个任务都有ID
+      tasks.forEach(function(task, index) {
+        if (!task.id) {
+          task.id = index + 1;
+        }
+      });
+
       layer.load(1);
       $.ajax({
         url: '/api/save-sync-config',
@@ -626,7 +691,7 @@
         layer.msg('请至少配置一个同步任务');
         return false;
       }
-      
+
       for(var i = 0; i < tasks.length; i++) {
         var task = tasks[i];
         if(!task.taskName) {
@@ -666,6 +731,8 @@
         var syncMode = $task.find('input[name^="syncMode_"]:checked').val();
 
         var taskData = {
+          id: parseInt(taskId),
+          baseConfigId: window.baseConfigId,
           taskName: $task.find('input[name="taskName[]"]').val().trim(),
           syncMode: syncMode,
           excludeDirs: $task.find('input[name="excludeDirs[]"]').val(),
@@ -702,7 +769,7 @@
       if(!validateTasks(tasks)) {
         return false;
       }
-      
+
       layer.confirm('确定要立即执行同步任务吗？', function(index){
         layer.close(index);
         runTask(tasks);
@@ -728,64 +795,182 @@
     }
 
     // 页面加载时获取配置
-    function loadConfigs() {
-      $.ajax({
-        url: '/api/get-base-config',
-        method: 'GET',
-        success: function(res) {
-          if(res.code === 200) {
-            $('input[name="baseUrl"]').val(res.data.baseUrl);
-            $('input[name="username"]').val(res.data.username);
-            $('input[name="password"]').val(res.data.password);
+    async function loadConfigs() {
+      $('#loading').show();
+      try {
+        // 先加载存储器列表
+        console.log('正在加载存储器列表...');
+        const storagesRes = await $.ajax({
+          url: '/api/storages',
+          method: 'GET'
+        });
+
+        console.log('存储器列表加载结果:', storagesRes);
+
+        if(storagesRes.code === 200) {
+          window.storagesList = storagesRes.data;
+
+          // 加载基础连接参数
+          console.log('正在加载基础连接参数...');
+          const baseConfigRes = await $.ajax({
+            url: '/api/get-base-config',
+            method: 'GET'
+          });
+
+          console.log('基础连接参数加载结果:', baseConfigRes);
+          if(baseConfigRes.code === 200) {
+            // 填充基础连接参数
+            $('input[name="baseUrl"]').val(baseConfigRes.data.baseUrl);
+            $('input[name="username"]').val(baseConfigRes.data.username);
+            $('input[name="password"]').val(baseConfigRes.data.password);
+
+            // 如果有连接参数，更新测试按钮状态
+            if(baseConfigRes.data.baseUrl && baseConfigRes.data.username && baseConfigRes.data.password) {
+              $('#testConnect').removeClass('layui-btn-gray').addClass('layui-btn-normal');
+            }
           }
-        }
-      });
 
-      $.ajax({
-        url: '/api/get-sync-config',
-        method: 'GET',
-        success: function(res) {
-          if(res.code === 200 && res.data.length > 0) {
+          // 加载同步配置
+          const syncRes = await $.ajax({
+            url: '/api/get-sync-config',
+            method: 'GET'
+          });
+
+          console.log('获取到的同步配置数据:', syncRes);
+          if(syncRes.code === 200 && syncRes.data && syncRes.data.tasks && syncRes.data.tasks.length > 0) {
+            console.log('准备填充的任务:', syncRes.data.tasks);
+
+            // 保存任务模板
+            const $taskTemplate = $('#taskList .task-item').first().clone();
+
+            // 清空现有任务列表
             $('#taskList').empty();
-            res.data.forEach(function(task, index) {
-              var taskId = index + 1;
-              var $task = $('.task-item:first').clone();
 
-              updateTaskIds($task, taskId);
-              fillTaskData($task, task);
+            // 使用 for...of 循环按顺序处理任务
+            for (const task of syncRes.data.tasks) {
+              if (!task.id) {
+                console.warn('任务缺少ID:', task);
+                continue;
+              }
 
+              console.log('处理任务:', task);
+
+              // 从模板创建新任务
+              const $task = $taskTemplate.clone();
+
+              // 立即设置任务ID
+              $task.attr('data-task-id', task.id);
+
+              // 更新所有ID相关属性
+              $task.find('input[name^="syncMode_"]').attr('name', `syncMode_${task.id}`);
+              $task.find('select[name^="sourceStorage_"]').attr('name', `sourceStorage_${task.id}`);
+              $task.find('#dataSyncConfig_1').attr('id', `dataSyncConfig_${task.id}`);
+              $task.find('#fileSyncConfig_1').attr('id', `fileSyncConfig_${task.id}`);
+              $task.find('#pathPairs_1').attr('id', `pathPairs_${task.id}`);
+              $task.find('input[name^="srcPath_"]').attr('name', `srcPath_${task.id}[]`);
+              $task.find('input[name^="dstPath_"]').attr('name', `dstPath_${task.id}[]`);
+
+              // 先添加到DOM
               $('#taskList').append($task);
-            });
 
+              // 等待一小段时间确保DOM更新完成
+              await new Promise(resolve => setTimeout(resolve, 50));
+
+              // 更新该任务的存储器列表
+              await updateTaskStorages($task, window.storagesList);
+
+              // 等待一小段时间确保存储器列表更新完成
+              await new Promise(resolve => setTimeout(resolve, 50));
+
+              // 填充数据
+              await fillTaskData($task, task);
+            }
+
+            // 最后重新渲染整个表单
             form.render();
           }
         }
+      } catch(error) {
+        console.error('加载配置失败:', error);
+        layer.msg('加载配置失败: ' + (error.message || '未知错误'));
+      } finally {
+        $('#loading').hide();
+      }
+    }
+
+    // 添加保存基础配置并获取ID的函数
+    function saveBaseConfigAndGetId(data) {
+      return new Promise((resolve, reject) => {
+        $.ajax({
+          url: '/api/save-base-config',
+          method: 'POST',
+          contentType: 'application/json',
+          data: JSON.stringify(data),
+          success: function(res) {
+            console.log('保存基础配置回:', res); // 添加日志
+            if(res.code === 200) {
+              // 保存返回ID，根据实际返回格式调整
+              window.baseConfigId = res.id || (res.data && res.data.id);
+              if (!window.baseConfigId) {
+                console.warn('未获取到基础配置ID，使用默认值1');
+                window.baseConfigId = 1;
+              }
+              resolve(window.baseConfigId);
+            } else {
+              reject(new Error(res.message || '保存基础配置失败'));
+            }
+          },
+          error: function(xhr, status, error) {
+            console.error('保存基础配置失败:', {xhr: xhr, status: status, error: error});
+            reject(new Error(error || '请求失败'));
+          }
+        });
       });
     }
 
-    function fillTaskData($task, task) {
+    // 填充任务数据的函数
+    async function fillTaskData($task, task) {
+      console.log('开始填充任务数据:', task);
+
+      if (!task.id) {
+        console.error('任务缺少ID:', task);
+        return;
+      }
+
+      // 设置任务名称
       $task.find('input[name="taskName[]"]').val(task.taskName);
 
       // 设置同步模式并显示对应配置
-      var $modeRadio = $task.find('input[name^="syncMode_"][value="' + task.syncMode + '"]');
+      const $modeRadio = $task.find(`input[name="syncMode_${task.id}"][value="${task.syncMode}"]`);
       $modeRadio.prop('checked', true);
 
       if(task.syncMode === 'data') {
-        // 数据同步模式
         $task.find('.data-sync-config').show();
         $task.find('.file-sync-config').hide();
 
-        $task.find('select[name^="sourceStorage_"]').val(task.sourceStorage);
+        // 设置源存储器
+        const $sourceStorage = $task.find(`select[name="sourceStorage_${task.id}"]`);
+        $sourceStorage.val(task.sourceStorage);
+
+        // 设置同步目录
         $task.find('input[name="syncDirs[]"]').val(task.syncDirs);
 
-        // 填充目标存储器选择
-        if(task.targetStorages) {
-          task.targetStorages.forEach(function(storage) {
-            $task.find('input[name^="targetStorages_"][value="' + storage + '"]').prop('checked', true);
+        // 设置目标存储器
+        if(task.targetStorages && task.targetStorages.length) {
+          const $targetDiv = $task.find('.target-storages');
+          $targetDiv.find('input[type="checkbox"]').prop('checked', false);
+
+          task.targetStorages.forEach(storage => {
+            const $checkbox = $targetDiv.find(`input[type="checkbox"][value="${storage}"]`);
+            if($checkbox.length) {
+              $checkbox.prop('checked', true);
+            }
           });
+
+          form.render('checkbox', $targetDiv.parent());
         }
       } else {
-        // 文���同步模式
+        // 文件同步模式
         $task.find('.data-sync-config').hide();
         $task.find('.file-sync-config').show();
 
@@ -795,77 +980,210 @@
           $pathPairs.empty();
 
           task.paths.forEach(function(path, index) {
-            if(index === 0) {
-              // 第一个路径对
-              addPathPair($pathPairs, $task.attr('data-task-id'));
-              var $firstPair = $pathPairs.find('.path-pair:first');
-              $firstPair.find('input[name^="srcPath_"]').val(path.srcPath);
-              $firstPair.find('input[name^="dstPath_"]').val(path.dstPath);
-            } else {
-              // 添加额外的路径对
-              addPathPair($pathPairs, $task.attr('data-task-id'));
-              var $lastPair = $pathPairs.find('.path-pair:last');
-              $lastPair.find('input[name^="srcPath_"]').val(path.srcPath);
-              $lastPair.find('input[name^="dstPath_"]').val(path.dstPath);
-            }
+            addPathPair($pathPairs, $task.attr('data-task-id'));
+            var $currentPair = $pathPairs.find('.path-pair').eq(index);
+            $currentPair.find('input[name^="srcPath_"]').val(path.srcPath);
+            $currentPair.find('input[name^="dstPath_"]').val(path.dstPath);
           });
-        } else {
-          // 确保至少有一个空的路径对
-          var $pathPairs = $task.find('#pathPairs_' + $task.attr('data-task-id'));
-          $pathPairs.empty();
-          addPathPair($pathPairs, $task.attr('data-task-id'));
         }
       }
 
+      // 设置排除目录
       $task.find('input[name="excludeDirs[]"]').val(task.excludeDirs);
+
+      // 设置定时调度器
       $task.find('input[name="cron[]"]').val(task.cron);
 
-      // 更新下次执行时间
       if(task.cron) {
-        updateNextRunTime($task, task.cron);
+        await updateNextRunTime($task, task.cron);
       }
 
-      form.render();
+      // 重新绑定查看时间按钮事件
+      $task.find('.check-next-time').off('click').on('click', function() {
+        const cronValue = $task.find('input[name="cron[]"]').val();
+        if(!cronValue) {
+          layer.msg('请先填写cron表达式');
+          return;
+        }
+        updateNextRunTime($task, cronValue);
+      });
+
+      // 等待一小段时间确保DOM更新完成
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
 
-    loadConfigs();
+    // 添加更新单个任务存储器函数
+    async function updateTaskStorages($task, storagesList) {
+      const taskId = $task.attr('data-task-id');
+      console.log('更新任务存储器列表:', taskId, storagesList);
+
+      if (!taskId) {
+        console.error('任务ID未设置任务元素:', $task);
+        return;
+      }
+
+      // 更新源存储器下拉框
+      const $sourceStorage = $task.find(`select[name="sourceStorage_${taskId}"]`);
+      if (!$sourceStorage.length) {
+        console.error('未找到源存储器下拉框:', taskId);
+        return;
+      }
+
+      $sourceStorage.empty().append('<option value="">请选择</option>');
+      storagesList.forEach(storage => {
+        $sourceStorage.append(`<option value="${storage}">${storage}</option>`);
+      });
+
+      // 更新目标存储器复选框
+      const $targetDiv = $task.find('.target-storages');
+      if (!$targetDiv.length) {
+        console.error('未找到目标存储器容器:', taskId);
+        return;
+      }
+
+      $targetDiv.empty();
+
+      // 创建复选框组
+      const checkboxHtml = storagesList.map(storage =>
+        `<input type="checkbox" lay-skin="primary" ` +
+        `name="targetStorages_${taskId}[]" ` +
+        `value="${storage}" ` +
+        `title="${storage}">`
+      ).join('');
+
+      $targetDiv.html(checkboxHtml);
+
+      // 重新渲染复选框
+      form.render('checkbox', $targetDiv.parent());
+
+      // 等待一小段时间确保DOM更新完成
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    // 在页面DOM加载完成后执行
+    $(document).ready(function() {
+      // 立即加载配置
+      loadConfigs();
+    });
 
     // 修改重置按钮的处理
     $('button[type="reset"]').on('click', function(){
       // 只清空同步配置区域的输入
       var $taskList = $('#taskList');
-      
+
       // 清空每个任务的输入
       $taskList.find('.task-item').each(function(){
         var $task = $(this);
         // 清空任务名称
         $task.find('input[name="taskName[]"]').val('');
-        
+
         // 重置同步模式为数据同步
         $task.find('input[name^="syncMode_"][value="data"]').prop('checked', true);
         $task.find('.data-sync-config').show();
         $task.find('.file-sync-config').hide();
-        
+
         // 清空数据同步配置
         $task.find('select[name^="sourceStorage_"]').val('');
         $task.find('input[name^="targetStorages_"]').prop('checked', false);
         $task.find('input[name="syncDirs[]"]').val('');
-        
+
         // 清空文件同步配置
         var $pathPairs = $task.find('[id^="pathPairs_"]');
         $pathPairs.empty();
         addPathPair($pathPairs, $task.attr('data-task-id'));
-        
+
         // 清空共同配置
         $task.find('input[name="excludeDirs[]"]').val('');
         $task.find('input[name="cron[]"]').val('');
         $task.find('.next-run-time').empty();
       });
-      
+
       // 重新渲染表单
       form.render();
-      
+
       return false; // 阻止表单默认重置行为
+    });
+
+    // 检查登录状态
+    $.ajax({
+      url: '/api/check-login',
+      method: 'GET',
+      success: function(res){
+        if(res.code !== 200){
+          window.location.href = '/login';
+        }
+      },
+      error: function(){
+        window.location.href = '/login';
+      }
+    });
+
+    // 修改登录密码按钮点击事件
+    $('#changePassword').on('click', function(){
+      layer.open({
+        type: 1,
+        title: '修改登录密码',
+        content: $('#changePasswordTpl').html(),
+        success: function(layero, index){
+          // 获取当前登录用户名并填充
+          var $form = layero.find('.layui-form');
+          $.ajax({
+            url: '/api/current-user',
+            method: 'GET',
+            success: function(res){
+              if(res.code === 200){
+                $form.find('input[name="oldUsername"]').val(res.data.username);
+                $form.find('input[name="newUsername"]').val(res.data.username);
+              }
+            }
+          });
+        },
+        area: ['500px', '400px']
+      });
+    });
+
+    // 修改密码表单提交
+    form.on('submit(changePasswordSubmit)', function(data){
+      // 验证新用户名不能为空
+      if(!data.field.newUsername.trim()){
+        layer.msg('新用户名不能为空');
+        return false;
+      }
+
+      if(data.field.newPassword !== data.field.confirmPassword){
+        layer.msg('两次输入的新密码不一致');
+        return false;
+      }
+
+      layer.load(1);
+      $.ajax({
+        url: '/api/change-password',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(data.field),
+        success: function(res){
+          layer.closeAll('loading');
+          if(res.code === 200){
+            layer.msg('修改成功', {
+              icon: 1,
+              time: 1000
+            }, function(){
+              layer.closeAll();
+              // 如果修改了用户名,需要重新登录
+              if(data.field.oldUsername !== data.field.newUsername){
+                window.location.href = '/login';
+              }
+            });
+          } else {
+            layer.msg(res.message || '修改失败');
+          }
+        },
+        error: function(){
+          layer.closeAll('loading');
+          layer.msg('请求失败');
+        }
+      });
+      return false;
     });
   });
   </script>

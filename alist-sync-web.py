@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request,jsonify
+from flask import Flask, render_template, request,jsonify,session,redirect,url_for
 from flask_bootstrap import Bootstrap
 import logging
 import subprocess
@@ -7,7 +7,7 @@ import json
 # import datetime
 # import pytz
 import croniter, datetime, time
-
+from functools import wraps
 from crontab import CronTab
 # from crontab import CronTab
 # import datetime
@@ -22,19 +22,207 @@ import signal
 
 
 app = Flask(__name__)
+app.secret_key = os.urandom(24) # 用于session加密
 Bootstrap(app)
+
+
+# 设置日志记录器
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+
 
 # 假设配置数据存储在当前目录下的config_data目录中，你可以根据实际需求修改
 STORAGE_DIR = os.path.join(app.root_path, 'config_data')
 if not os.path.exists(STORAGE_DIR):
     os.makedirs(STORAGE_DIR)
 
-# 设置日志记录器
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# 用户配置文件路径
+USER_CONFIG_FILE = os.path.join(os.path.dirname(__file__),STORAGE_DIR, 'users_config.json')
+
+# 确保配置目录存在
+os.makedirs(os.path.dirname(USER_CONFIG_FILE), exist_ok=True)
+
+
+
+
+
+# 如果用户配置文件不存在,创建默认配置
+if not os.path.exists(USER_CONFIG_FILE):
+    default_config = {
+        "users": [
+            {
+                "username": "admin",
+                "password": "admin"
+            }
+        ]
+    }
+    with open(USER_CONFIG_FILE, 'w', encoding='utf-8') as f:
+        json.dump(default_config, f, indent=2, ensure_ascii=False)
+
+def load_users():
+    """加载用户配置"""
+    try:
+        with open(USER_CONFIG_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"加载用户配置失败: {e}")
+        return {"users": []}
+
+def save_users(config):
+    """保存用户配置"""
+    try:
+        with open(USER_CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"保存用户配置失败: {e}")
+        return False
+
+# 登录验证装饰器
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+# 默认路由重定向到登录页
+@app.route('/')
+def index():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    return render_template('index.html')
+
+
+# 登录页面路由
+@app.route('/login')
+def login():
+    return render_template('login.html')
+
+
+# 登录接口
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+
+        if not username or not password:
+            return jsonify({'code': 400, 'message': '用户名和密码不能为空'})
+
+        # 加载用户配置
+        config = load_users()
+
+        # 查找用户
+        user = next((user for user in config['users']
+                     if user['username'] == username
+                     and user['password'] == password), None)
+
+        if user:
+            session['user_id'] = username
+            return jsonify({'code': 200, 'message': '登录成功'})
+        else:
+            return jsonify({'code': 401, 'message': '用户名或密码错误'})
+
+    except Exception as e:
+        print(f"登录失败: {e}")
+        return jsonify({'code': 500, 'message': '服务器错误'})
+
+
+# 检查登录状态接口
+@app.route('/api/check-login')
+def check_login():
+    if 'user_id' in session:
+        return jsonify({'code': 200, 'message': 'logged in'})
+    return jsonify({'code': 401, 'message': 'not logged in'})
+
+
+# 获取当前用户信息接口
+@app.route('/api/current-user')
+@login_required
+def current_user():
+    try:
+        username = session['user_id']
+        return jsonify({
+            'code': 200,
+            'message': 'success',
+            'data': {
+                'username': username
+            }
+        })
+    except Exception as e:
+        print(f"获取当前用户信息失败: {e}")
+        return jsonify({'code': 500, 'message': '服务器错误'})
+# 修改密码接口
+@app.route('/api/change-password', methods=['POST'])
+@login_required
+def change_password():
+    try:
+        data = request.get_json()
+        old_username = data.get('oldUsername')
+        new_username = data.get('newUsername')
+        old_password = data.get('oldPassword')
+        new_password = data.get('newPassword')
+
+        if not all([old_username, new_username, old_password, new_password]):
+            return jsonify({'code': 400, 'message': '所有字段都不能为空'})
+
+        # 加载用户配置
+        config = load_users()
+
+        # 查找当前用户
+        username = session['user_id']
+        user = next((user for user in config['users']
+                     if user['username'] == username), None)
+
+        if not user:
+            return jsonify({'code': 404, 'message': '用户不存在'})
+
+        # 验证原密码
+        if user['password'] != old_password:
+            return jsonify({'code': 400, 'message': '原密码错误'})
+
+        # 如果修改了用户名,确保新用户名不存在
+        if old_username != new_username:
+            exists_user = next((u for u in config['users']
+                                if u['username'] == new_username
+                                and u != user), None)
+            if exists_user:
+                return jsonify({'code': 400, 'message': '新用户名已存在'})
+
+        # 更新用户名和密码
+        user['username'] = new_username
+        user['password'] = new_password
+
+        # 保存配置
+        if save_users(config):
+            # 如果修改了用户名,更新session
+            if old_username != new_username:
+                session['user_id'] = new_username
+            return jsonify({'code': 200, 'message': '修改成功'})
+        else:
+            return jsonify({'code': 500, 'message': '保存配置失败'})
+
+    except Exception as e:
+        print(f"修改密码失败: {e}")
+        return jsonify({'code': 500, 'message': '服务器错误'})
+
+
+# 登出接口
+@app.route('/api/logout')
+def logout():
+    session.clear()
+    return jsonify({'code': 200, 'message': 'success'})
+
 
 # 保存基础连接配置接口
 @app.route('/api/save-base-config', methods=['POST'])
+@login_required
 def save_base_config():
     data = request.get_json()
     base_url = data.get('baseUrl')
@@ -54,6 +242,7 @@ def save_base_config():
 
 # 查询基础连接配置接口
 @app.route('/api/get-base-config', methods=['GET'])
+@login_required
 def get_base_config():
     config_file_path = os.path.join(STORAGE_DIR, 'base_config.json')
     try:
@@ -66,6 +255,7 @@ def get_base_config():
         return jsonify({"code": 500, "message": f"读取配置失败: {str(e)}"})
 
 @app.route('/api/get-sync-config', methods=['GET'])
+@login_required
 def get_sync_config():
     config_file_path = os.path.join(STORAGE_DIR, 'sync_config.json')
     try:
@@ -85,6 +275,7 @@ def timeout_handler(signum, frame):
     raise TimeoutError("连接测试超时")
 # 测试连接接口
 @app.route('/api/test-connection', methods=['POST'])
+@login_required
 def test_connection():
     try:
 
@@ -115,6 +306,7 @@ def test_connection():
 
 # 保存同步配置接口
 @app.route('/api/save-sync-config', methods=['POST'])
+@login_required
 def save_sync_config():
     data = request.get_json()
     sync_config_file_path = os.path.join(STORAGE_DIR,'sync_config.json')
@@ -131,6 +323,7 @@ def save_sync_config():
 
 # 假设存储器列表数据也是存储在文件中，这里模拟返回一些示例数据，你可根据实际替换读取逻辑
 @app.route('/api/storages', methods=['GET'])
+@login_required
 def get_storages():
     config = get_base_config()
     data = config.get_json().get("data")
@@ -148,6 +341,7 @@ def get_storages():
 
 # 执行任务接口
 @app.route('/api/run-task', methods=['POST'])
+@login_required
 def run_task():
     # 这里可以添加真实的任务执行逻辑，比如调用相关同步任务执行的函数等，简化示例直接返回成功
     return jsonify({"code": 200, "message": "任务已启动"})
@@ -253,34 +447,34 @@ def CrontabRunTime(sched, ctime, timeFormat="%Y-%m-%d %H:%M:%S"):
 
 
 
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    if request.method == 'POST':
-        # 从页面获取参数
-        base_url = request.form.get('base_url')
-        username = request.form.get('username')
-        password = request.form.get('password')
-        cron_schedule = request.form.get('cron_schedule')
-        sync_delete_action = request.form.get('sync_delete_action')
-        dir_pairs = request.form.get('dir_pairs')
-
-        # 设置环境变量，以便被原Python代码读取
-        os.environ['BASE_URL'] = base_url
-        os.environ['USERNAME'] = username
-        os.environ['PASSWORD'] = password
-        os.environ['CRON_SCHEDULE'] = cron_schedule
-        os.environ['SYNC_DELETE_ACTION'] = sync_delete_action
-        os.environ['DIR_PAIRS'] = dir_pairs
-
-        # 执行原Python代码，这里假设原Python代码文件名为your_code.py
-        result = subprocess.run(['python', 'alist-sync-test.py'], capture_output=True, text=True)
-
-        # 读取并记录Python代码执行过程中打印的内容作为日志
-        logger.info(result.stdout)
-
-        return f"执行结果日志已记录，你可以查看日志详情。<br>返回码: {result.returncode}"
-    return render_template('index.html')
-
+# @app.route('/', methods=['GET', 'POST'])
+# def index():
+#     if request.method == 'POST':
+#         # 从页面获取参数
+#         base_url = request.form.get('base_url')
+#         username = request.form.get('username')
+#         password = request.form.get('password')
+#         cron_schedule = request.form.get('cron_schedule')
+#         sync_delete_action = request.form.get('sync_delete_action')
+#         dir_pairs = request.form.get('dir_pairs')
+#
+#         # 设置环境变量，以便被原Python代码读取
+#         os.environ['BASE_URL'] = base_url
+#         os.environ['USERNAME'] = username
+#         os.environ['PASSWORD'] = password
+#         os.environ['CRON_SCHEDULE'] = cron_schedule
+#         os.environ['SYNC_DELETE_ACTION'] = sync_delete_action
+#         os.environ['DIR_PAIRS'] = dir_pairs
+#
+#         # 执行原Python代码，这里假设原Python代码文件名为your_code.py
+#         result = subprocess.run(['python', 'alist-sync-test.py'], capture_output=True, text=True)
+#
+#         # 读取并记录Python代码执行过程中打印的内容作为日志
+#         logger.info(result.stdout)
+#
+#         return f"执行结果日志已记录，你可以查看日志详情。<br>返回码: {result.returncode}"
+#     return render_template('index.html')
+#
 
 
 
