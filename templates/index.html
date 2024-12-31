@@ -556,12 +556,11 @@
       });
     });
 
-    // 测试连接
+    // 修改测试连接相关代码
     var $baseUrl = $('input[name="baseUrl"]'),
         $username = $('input[name="username"]'),
         $password = $('input[name="password"]'),
-        $testBtn = $('#testConnect'),
-        isTestSuccess = false;
+        $testBtn = $('#testConnect');
 
     $('input[name]').on('input', function(){
       var hasAllRequired = $baseUrl.val() && $username.val() && $password.val();
@@ -569,8 +568,6 @@
     });
 
     $testBtn.on('click', function(){
-      if($(this).hasClass('layui-btn-normal')) return;
-
       if(!$baseUrl.val() || !$username.val() || !$password.val()){
         layer.msg('服务地址、用户名和密码均为必填项');
         return;
