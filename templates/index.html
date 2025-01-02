@@ -239,7 +239,7 @@
       <div class="layui-form-item" style="margin-top: 15px;">
         <div class="layui-input-block" style="margin-left: 110px;">
           <button type="button" class="layui-btn" id="saveSyncConfig">保存同步配置</button>
-          <button type="button" class="layui-btn layui-btn-normal execute-task">立即执行</button>
+          <button type="button" class="layui-btn layui-btn-normal" id="runTask">立即执行</button>
           <button type="button" class="layui-btn layui-btn-primary" id="viewLogs">查看日志</button>
           <button type="reset" class="layui-btn layui-btn-primary">重置</button>
         </div>
@@ -861,47 +861,39 @@
         return tasks;
     }
 
-    // 修改执行任务的事件绑定
-    $(document).on('click', '.execute-task', function() {
-      executeTask();
+    // 修改立即执行的处理
+    $('#runTask').on('click', function(){
+      var tasks = collectTaskData();
+      if(!validateTasks(tasks)) {
+        return false;
+      }
+
+      layer.confirm('确定要立即执行同步任务吗？', function(index){
+        layer.close(index);
+        // 先保存配置
+        saveSyncConfig(tasks, function() {
+          // 配置保存成功后执行任务
+          runTask(tasks);
+        });
+      });
     });
 
-    // 修改执行任务的函数
-    function executeTask() {
-        layer.confirm('确定要立即执行同步任务吗？', {
-            btn: ['确定', '取消']
-        }, function(index) {
-            layer.close(index);
-            layer.load(1);
-            
-            $.ajax({
-                url: '/api/execute-task',
-                method: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({}),  // 不需要传递taskId
-                success: function(res) {
-                    layer.closeAll('loading');
-                    if(res.code === 200) {
-                        layer.msg('任务提交成功，请查看日志', {
-                            icon: 1,
-                            time: 2000
-                        });
-                    } else {
-                        layer.msg(res.message || '启动任务失败', {
-                            icon: 2,
-                            time: 2000
-                        });
-                    }
-                },
-                error: function() {
-                    layer.closeAll('loading');
-                    layer.msg('请求失败', {
-                        icon: 2,
-                        time: 2000
-                    });
-                }
-            });
-        });
+    function runTask(tasks) {
+      layer.load(1);
+      $.ajax({
+        url: '/api/run-task',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ tasks: tasks }),
+        success: function(res){
+          layer.closeAll('loading');
+          layer.msg(res.code === 0 ? '任务已启动' : '同步失败: ' + res.msg);
+        },
+        error: function(){
+          layer.closeAll('loading');
+          layer.msg('请求失败');
+        }
+      });
     }
 
     // 页面加载时获取配置
@@ -1444,35 +1436,6 @@
             $(this).prop('checked', true);
             // 重新渲染表单
             form.render('radio');
-        });
-    }
-
-    // 修改执行任务的函数,简化处理
-    function executeTask(taskId) {
-        layer.confirm('确定要立即执行该任务吗？', {
-            btn: ['确定', '取消']
-        }, function(index) {
-            layer.close(index);
-            layer.load(1);
-            
-            $.ajax({
-                url: '/api/execute-task',
-                method: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({ taskId: taskId }),
-                success: function(res) {
-                    layer.closeAll('loading');
-                    if(res.code === 200) {
-                        layer.msg('任务提交成功，请查看日志');
-                    } else {
-                        layer.msg(res.message || '启动任务失败');
-                    }
-                },
-                error: function() {
-                    layer.closeAll('loading');
-                    layer.msg('请求失败');
-                }
-            });
         });
     }
   });

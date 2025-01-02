@@ -520,40 +520,54 @@ def run_task():
         return jsonify({"code": 500, "message": f"执行任务时发生错误: {str(e)}"})
 
 
-# 添加异步执行任务的路由
-@app.route('/api/execute-task', methods=['POST'])
-@login_required
-def execute_task_api():
-    try:
-        # 在后台线程中执行任务
-        import threading
-        thread = threading.Thread(target=execute_sync_task)
-        thread.daemon = True  # 设置为守护线程
-        thread.start()
-        
-        return jsonify({
-            "code": 200, 
-            "message": "任务提交成功，请查看日志"
-        })
-        
-    except Exception as e:
-        logger.error(f"启动任务执行失败: {str(e)}")
-        return jsonify({
-            "code": 500, 
-            "message": f"启动任务执行失败: {str(e)}"
-        })
-
-
-# 修改 execute_sync_task 函数，添加任务执行状态记录
-def execute_sync_task():
+def execute_sync_task(id: int | None = None):
     """执行同步任务"""
     try:
         logger.info("开始执行同步任务")
-        
+
         # 加载同步配置获取任务名称和差异处置策略
         sync_config = load_sync_config()
         task_name = "未知任务"
         sync_del_action = "none"  # 默认值
+
+        if id is not None and sync_config and 'tasks' in sync_config:
+            task = next((t for t in sync_config['tasks'] if t['id'] == id), None)
+            if task:
+                task_name = task.get('taskName', '未知任务')
+                sync_del_action = task.get('syncDelAction', 'none')
+
+        logger.info(f"任务名称: {task_name}, 差异处置策略: {sync_del_action}")
+
+        # 加载基础配置
+        base_config = load_base_config()
+        if not base_config:
+            logger.error("基础配置为空，无法执行同步任务")
+            return False
+
+        logger.info(f"已加载基础配置: {base_config}")
+
+        # 清除可能存在的旧环境变量
+        for i in range(1, 51):
+            if f'DIR_PAIRS{i}' in os.environ:
+                del os.environ[f'DIR_PAIRS{i}']
+        if 'DIR_PAIRS' in os.environ:
+            del os.environ['DIR_PAIRS']
+
+        # 设置基础环境变量
+        os.environ['BASE_URL'] = base_config.get('baseUrl', '')
+        os.environ['USERNAME'] = base_config.get('username', '')
+        os.environ['PASSWORD'] = base_config.get('password', '')
+
+        # 加载同步配置
+        sync_config = load_sync_config()
+        if not sync_config:
+            logger.error("同步配置为空，无法执行同步任务")
+            return False
+
+        # 设置同步删除动作
+        # sync_del_action = task.get('syncDelAction', 'none') if task else 'none'
+        # os.environ['SYNC_DELETE_ACTION'] = sync_del_action
+        # logger.info(f"[{task_name}] 设置同步删除动作: {sync_del_action}")
 
         # 处理任务列表
         tasks = sync_config.get('tasks', [])
@@ -563,30 +577,53 @@ def execute_sync_task():
 
         for task in tasks:
             try:
-                task_name = task.get('taskName', '未知任务')
-                sync_del_action = task.get('syncDelAction', 'none')
-                logger.info(f"[{task_name}] 开始处理任务，差异处置策略: {sync_del_action}")
+                if id is None or id == task['id']:
+                    task_name = task.get('taskName', '未知任务')
+                    sync_del_action = task.get('syncDelAction', 'none')
+                    logger.info(f"[{task_name}] 开始处理任务，差异处置策略: {sync_del_action}")
 
-                # 更新环境变量中的差异处置策略
-                os.environ['SYNC_DELETE_ACTION'] = sync_del_action
+                    # 更新环境变量中的差异处置策略
+                    os.environ['SYNC_DELETE_ACTION'] = sync_del_action
 
-                if task['syncMode'] == 'data':
-                    dir_pairs = ''
-                    exclude_dirs = task['excludeDirs']
-                    os.environ['EXCLUDE_DIRS'] = exclude_dirs
-                    # 数据同步模式：一个源存储同步到多个目标存储
-                    syncDirs = task['syncDirs']
-                    source = task['sourceStorage']
+                    if task['syncMode'] == 'data':
+                        dir_pairs = ''
+                        exclude_dirs = task['excludeDirs']
+                        os.environ['EXCLUDE_DIRS'] = exclude_dirs
+                        # 数据同步模式：一个源存储同步到多个目标存储
+                        syncDirs = task['syncDirs']
+                        source = task['sourceStorage']
 
-                    if source not in exclude_dirs:
-                        exclude_dirs = f'{source}/{exclude_dirs}'
-                    exclude_dirs = exclude_dirs.replace('//', '/')
+                        if source not in exclude_dirs:
+                            exclude_dirs = f'{source}/{exclude_dirs}'
+                        exclude_dirs = exclude_dirs.replace('//', '/')
 
-                    for target in task['targetStorages']:
-                        if source != target:
-                            dir_pair = f"{source}/{syncDirs}:{target}/{syncDirs}"
-                            dir_pair = dir_pair.replace('//', '/')
-                            if f'DIR_PAIRS' in os.environ:
+                        for target in task['targetStorages']:
+                            if source != target:
+                                dir_pair = f"{source}/{syncDirs}:{target}/{syncDirs}"
+                                dir_pair = dir_pair.replace('//', '/')
+                                if f'DIR_PAIRS' in os.environ:
+                                    os.environ['DIR_PAIRS'] += f";{dir_pair}"
+                                else:
+                                    os.environ['DIR_PAIRS'] = dir_pair
+
+                                if dir_pairs != '':
+                                    dir_pairs += f";{dir_pair}"
+                                else:
+                                    dir_pairs = dir_pair
+                                logger.info(f"[{task_name}] 添加同步目录对: {dir_pair}")
+                                # 调用 alist_sync_ql 的 main 函数
+                                # alist_sync_ql.main(dir_pairs, excludeDirs)
+                                # print("DIR_PAIRS:    ", os.environ.get("DIR_PAIRS"))
+                        alist_sync_ql.main(dir_pairs, sync_del_action, exclude_dirs)
+                    elif task['syncMode'] == 'file':
+                        dir_pairs = ''
+                        exclude_dirs = task['excludeDirs']
+                        os.environ['EXCLUDE_DIRS'] = exclude_dirs
+                        # 文件同步模式：多个源路径同步到对应的目标路径
+                        paths = task['paths']
+                        for path in paths:
+                            dir_pair = f"{path['srcPath']}:{path['dstPath']}"
+                            if 'DIR_PAIRS' in os.environ:
                                 os.environ['DIR_PAIRS'] += f";{dir_pair}"
                             else:
                                 os.environ['DIR_PAIRS'] = dir_pair
@@ -595,32 +632,10 @@ def execute_sync_task():
                                 dir_pairs += f";{dir_pair}"
                             else:
                                 dir_pairs = dir_pair
+
                             logger.info(f"[{task_name}] 添加同步目录对: {dir_pair}")
-                            # 调用 alist_sync_ql 的 main 函数
-                            # alist_sync_ql.main(dir_pairs, excludeDirs)
-                            # print("DIR_PAIRS:    ", os.environ.get("DIR_PAIRS"))
-                    alist_sync_ql.main(dir_pairs, sync_del_action, exclude_dirs)
-                elif task['syncMode'] == 'file':
-                    dir_pairs = ''
-                    exclude_dirs = task['excludeDirs']
-                    os.environ['EXCLUDE_DIRS'] = exclude_dirs
-                    # 文件同步模式：多个源路径同步到对应的目标路径
-                    paths = task['paths']
-                    for path in paths:
-                        dir_pair = f"{path['srcPath']}:{path['dstPath']}"
-                        if 'DIR_PAIRS' in os.environ:
-                            os.environ['DIR_PAIRS'] += f";{dir_pair}"
-                        else:
-                            os.environ['DIR_PAIRS'] = dir_pair
-
-                        if dir_pairs != '':
-                            dir_pairs += f";{dir_pair}"
-                        else:
-                            dir_pairs = dir_pair
-
-                        logger.info(f"[{task_name}] 添加同步目录对: {dir_pair}")
-                        print("DIR_PAIRS:    ", os.environ.get("DIR_PAIRS"))
-                    alist_sync_ql.main(dir_pairs, sync_del_action, exclude_dirs)
+                            print("DIR_PAIRS:    ", os.environ.get("DIR_PAIRS"))
+                        alist_sync_ql.main(dir_pairs, sync_del_action, exclude_dirs)
 
 
 
@@ -775,61 +790,6 @@ def get_logs():
             'code': 500,
             'message': f"获取日志失败: {str(e)}"
         })
-
-
-# 添加任务状态管理
-TASK_STATUS = {}  # 用于存储任务状态
-
-def update_task_status(task_id: int, status: str, message: str):
-    """更新任务状态"""
-    if task_id is None:
-        return
-        
-    TASK_STATUS[task_id] = {
-        "status": status,
-        "message": message,
-        "updateTime": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-
-
-# 添加获取任务状态的接口
-@app.route('/api/task-status/<int:task_id>', methods=['GET'])
-@login_required
-def get_task_status(task_id):
-    """获取任务执行状态"""
-    status = TASK_STATUS.get(task_id, {
-        "status": "unknown",
-        "message": "未找到任务状态",
-        "updateTime": None
-    })
-    return jsonify({
-        "code": 200,
-        "data": status
-    })
-
-
-# 清理过期的任务状态
-def clean_task_status():
-    """清理超过24小时的任务状态"""
-    now = datetime.now()
-    expired_tasks = []
-    
-    for task_id, status in TASK_STATUS.items():
-        update_time = datetime.strptime(status["updateTime"], "%Y-%m-%d %H:%M:%S")
-        if (now - update_time).total_seconds() > 24 * 3600:  # 24小时
-            expired_tasks.append(task_id)
-            
-    for task_id in expired_tasks:
-        del TASK_STATUS[task_id]
-
-
-# 添加定时清理任务状态的调度
-scheduler.add_job(
-    func=clean_task_status,
-    trigger='interval',
-    hours=1,  # 每小时执行一次清理
-    id='clean_task_status'
-)
 
 
 if __name__ == '__main__':
