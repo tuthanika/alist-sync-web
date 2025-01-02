@@ -129,6 +129,19 @@
                 </div>
               </div>
 
+              <!-- 同步目标差异处置策略 -->
+              <div class="layui-form-item">
+                <label class="layui-form-label" title="处理目标目录有但是源目录没有的文件">同步目标差异处置策略</label>
+                <div class="layui-input-block syncDelAction-group">
+                  <input type="radio" name="syncDelAction_1" value="none" title="不处理目标目录差异项" checked 
+                         lay-group="syncDelAction_1">
+                  <input type="radio" name="syncDelAction_1" value="move" title="移至目标目录回收站" 
+                         lay-group="syncDelAction_1">
+                  <input type="radio" name="syncDelAction_1" value="delete" title="删除目标目录多余项" 
+                         lay-group="syncDelAction_1">
+                </div>
+              </div>
+
               <!-- 同步模式选择 -->
               <div class="layui-form-item">
                 <label class="layui-form-label">同步模式</label>
@@ -226,7 +239,7 @@
       <div class="layui-form-item" style="margin-top: 15px;">
         <div class="layui-input-block" style="margin-left: 110px;">
           <button type="button" class="layui-btn" id="saveSyncConfig">保存同步配置</button>
-          <button type="button" class="layui-btn layui-btn-normal" id="runTask">立即执行</button>
+          <button type="button" class="layui-btn layui-btn-normal execute-task">立即执行</button>
           <button type="button" class="layui-btn layui-btn-primary" id="viewLogs">查看日志</button>
           <button type="reset" class="layui-btn layui-btn-primary">重置</button>
         </div>
@@ -314,9 +327,7 @@
         });
 
         if(storagesRes.code === 200) {
-          updateStorageSelects(storagesRes.data);
-          updateStorageCheckboxes(storagesRes.data);
-          form.render();
+          await updateAllTasksStorages();
         }
       } catch(error) {
         console.error('加载存储器列表失败:', error);
@@ -324,37 +335,70 @@
       }
     }
 
-    // 更新源存储器下拉框
-    function updateStorageSelects(data) {
-      $('select[name^="sourceStorage_"]').each(function() {
-        var $select = $(this);
-        $select.empty().append('<option value="">请选择</option>');
-        data.forEach(function(storage) {
-          $select.append(
-            '<option value="' + storage + '">' + storage + '</option>'
-          );
-        });
-      });
+    // 添加更新所有任务存储器的函数
+    async function updateAllTasksStorages() {
+        try {
+            // 获取存储器列表
+            const storagesRes = await $.ajax({
+                url: '/api/storages',
+                method: 'GET'
+            });
+
+            if(storagesRes.code === 200) {
+                const storagesList = storagesRes.data;
+                
+                // 遍历所有任务并更新存储器
+                $('.task-item').each(function() {
+                    const $task = $(this);
+                    const taskId = $task.attr('data-task-id');
+                    
+                    // 保存当前选中的值
+                    const currentSourceStorage = $task.find(`select[name="sourceStorage_${taskId}"]`).val();
+                    const currentTargetStorages = [];
+                    $task.find(`input[name="targetStorages_${taskId}[]"]:checked`).each(function() {
+                        currentTargetStorages.push($(this).val());
+                    });
+
+                    // 更新源存储器下拉框
+                    const $sourceStorage = $task.find(`select[name="sourceStorage_${taskId}"]`);
+                    $sourceStorage.empty().append('<option value="">请选择</option>');
+                    storagesList.forEach(storage => {
+                        $sourceStorage.append(
+                            `<option value="${storage}">${storage}</option>`
+                        );
+                    });
+
+                    // 更新目标存储器复选框
+                    const $targetDiv = $task.find('.target-storages');
+                    $targetDiv.empty();
+                    storagesList.forEach(storage => {
+                        $targetDiv.append(
+                            `<input type="checkbox" lay-skin="primary" ` +
+                            `name="targetStorages_${taskId}[]" ` +
+                            `value="${storage}" ` +
+                            `title="${storage}">`
+                        );
+                    });
+
+                    // 恢复之前选中的值
+                    if(currentSourceStorage) {
+                        $sourceStorage.val(currentSourceStorage);
+                    }
+                    if(currentTargetStorages.length > 0) {
+                        currentTargetStorages.forEach(storage => {
+                            $targetDiv.find(`input[value="${storage}"]`).prop('checked', true);
+                        });
+                    }
+                });
+
+                // 重新渲染表单
+                form.render();
+            }
+        } catch(error) {
+            console.error('更新存储器列表失败:', error);
+            layer.msg('更新存储器列表失败: ' + (error.message || '未知错误'));
+        }
     }
-
-    // 更新目标存储器复选框
-    function updateStorageCheckboxes(data) {
-      $('.target-storages').each(function() {
-        var $targetDiv = $(this);
-        var taskId = $targetDiv.closest('.task-item').attr('data-task-id');
-        $targetDiv.empty();
-
-        data.forEach(function(storage) {
-          $targetDiv.append(
-            '<input type="checkbox" name="targetStorages_' + taskId + '[]" value="' +
-            storage + '" title="' + storage + '" lay-skin="primary">'
-          );
-        });
-      });
-    }
-
-    // 页面加载时获取存储器列表
-    loadStorages();
 
     // 同步模式切换
     form.on('radio(syncMode)', function(data){
@@ -459,17 +503,17 @@
       }
     }
 
-    $('.check-next-time').on('click', function() {
-      var $task = $(this).closest('.task-item');
-      var cronValue = $task.find('.cron-input').val();
-
-      if(!cronValue) {
-        layer.msg('请先填写cron表达式');
-        return;
-      }
-
-      updateNextRunTime($task, cronValue);
-    });
+    // 添加绑定查看时间按钮事件的函数
+    function bindCheckNextTimeEvent($task) {
+        $task.find('.check-next-time').off('click').on('click', function() {
+            const cronValue = $task.find('input[name="cron[]"]').val();
+            if(!cronValue) {
+                layer.msg('请先填写cron表达式');
+                return;
+            }
+            updateNextRunTime($task, cronValue);
+        });
+    }
 
     // 添加路径对
     $(document).on('click', '.add-path', function(){
@@ -503,44 +547,69 @@
       }
     }
 
-    // 添加任务
-    $('#addTask').on('click', function(){
-      var taskId = $('.task-item').length + 1;
-      var $newTask = createNewTask(taskId);
-      $('#taskList').append($newTask);
+    // 添加获取最大任务ID的函数
+    function getMaxTaskId() {
+        let maxId = 0;
+        $('.task-item').each(function() {
+            const taskId = parseInt($(this).attr('data-task-id')) || 0;
+            maxId = Math.max(maxId, taskId);
+        });
+        return maxId;
+    }
 
-      loadStorages();
-      form.render();
+    // 修改添加任务按钮的处理
+    $('#addTask').on('click', function(){
+        // 获取新任务ID（当前最大ID + 1）
+        var taskId = getMaxTaskId() + 1;
+        var $newTask = createNewTask(taskId);
+        $('#taskList').append($newTask);
+
+        // 更新所有任务的存储器列表
+        updateAllTasksStorages();
+        form.render();
     });
 
-    // 创建新任务
+    // 修改创建新任务的函数
     function createNewTask(taskId) {
-      var $newTask = $('.task-item:first').clone();
-      $newTask.attr('data-task-id', taskId);
-      updateTaskIds($newTask, taskId);
-
-      // 重新绑定查看时间按钮事件
-      $newTask.find('.check-next-time').off('click').on('click', function() {
-        var cronValue = $newTask.find('input[name="cron[]"]').val();
-        if(!cronValue) {
-          layer.msg('请先填写cron表达式');
-          return;
-        }
-        updateNextRunTime($newTask, cronValue);
-      });
-
-      return $newTask;
+        var $newTask = $('.task-item:first').clone();
+        $newTask.attr('data-task-id', taskId);
+        
+        // 更新所有需要唯一ID的元素
+        updateTaskIds($newTask, taskId);
+        
+        // 清空所有输入
+        clearTaskInputs($newTask);
+        
+        // 重新绑定同步目标差异处置策略的事件
+        bindSyncDelActionEvents($newTask);
+        
+        // 重新绑定查看时间按钮事件
+        bindCheckNextTimeEvent($newTask);
+        
+        return $newTask;
     }
 
     // 更新任务ID
     function updateTaskIds($task, taskId) {
-      $task.attr('data-task-id', taskId);
-      $task.find('input[name^="syncMode_"]').attr('name', 'syncMode_' + taskId);
-      $task.find('select[name^="sourceStorage_"]').attr('name', 'sourceStorage_' + taskId);
-      $task.find('#pathPairs_1').attr('id', 'pathPairs_' + taskId);
-      $task.find('input[name^="srcPath_"]').attr('name', 'srcPath_' + taskId + '[]');
-      $task.find('input[name^="dstPath_"]').attr('name', 'dstPath_' + taskId + '[]');
-      $task.find('#cronInput_1').attr('id', 'cronInput_' + taskId);
+      // 更新同步目标差异处置策略的name属性和lay-group属性
+      $task.find('.syncDelAction-group input[type="radio"]').each(function() {
+        const name = `syncDelAction_${taskId}`;
+        $(this).attr({
+          'name': name,
+          'lay-group': name
+        });
+      });
+      
+      // 更新同步模式的name属性
+      $task.find('input[name^="syncMode_"]').attr('name', `syncMode_${taskId}`);
+      
+      // 更新其他ID相关属性
+      $task.find('select[name^="sourceStorage_"]').attr('name', `sourceStorage_${taskId}`);
+      $task.find('#dataSyncConfig_1').attr('id', `dataSyncConfig_${taskId}`);
+      $task.find('#fileSyncConfig_1').attr('id', `fileSyncConfig_${taskId}`);
+      $task.find('#pathPairs_1').attr('id', `pathPairs_${taskId}`);
+      $task.find('input[name^="srcPath_"]').attr('name', `srcPath_${taskId}[]`);
+      $task.find('input[name^="dstPath_"]').attr('name', `dstPath_${taskId}[]`);
     }
 
     // 清空任务输入
@@ -548,15 +617,23 @@
       $task.find('input[type="text"]').val('');
       $task.find('select').val('');
       $task.find('input[type="checkbox"]').prop('checked', false);
-
-      // 设置默认同步模式为数据同步
-      $task.find('input[name^="syncMode_"][value="data"]').prop('checked', true);
+      
+      // 重置同步目标差异处置策略为默认值
+      const taskId = $task.attr('data-task-id');
+      const groupName = `syncDelAction_${taskId}`;
+      
+      // 清除所有选中状态
+      $task.find(`input[name="${groupName}"]`).prop('checked', false);
+      // 设置默认值
+      $task.find(`input[name="${groupName}"][value="none"]`).prop('checked', true);
+      
+      // 重置同步模式为数据同步
+      $task.find(`input[name="syncMode_${taskId}"][value="data"]`).prop('checked', true);
       $task.find('.data-sync-config').show();
       $task.find('.file-sync-config').hide();
-
+      
       // 清空路径对容器
-      var taskId = $task.attr('data-task-id');
-      var $pathPairs = $task.find('#pathPairs_' + taskId);
+      var $pathPairs = $task.find(`#pathPairs_${taskId}`);
       $pathPairs.empty();
       addPathPair($pathPairs, taskId);
     }
@@ -663,153 +740,168 @@
       });
     }
 
-    // 使用click事件绑定
+    // 修改保存同步配置按钮的处理
     $('#saveSyncConfig').on('click', function() {
-      var tasks = collectTaskData();
-      if(!validateTasks(tasks)) {
-        return;
-      }
-      saveSyncConfig(tasks, null);
+        var tasks = collectTaskData();
+        // 检查是否至少配置了一个任务
+        if (!tasks || tasks.length === 0) {
+            layer.msg('请至少配置一个同步任务', {icon: 2});
+            return;
+        }
+        if(!validateTasks(tasks)) {
+            return;
+        }
+        saveSyncConfig(tasks, null);
     });
 
     // 保存同步配置的函数
     function saveSyncConfig(tasks, callback) {
-      layer.load(1);
-      $.ajax({
-        url: '/api/save-sync-config',
-        method: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify({ tasks: tasks }),
-        success: function(res){
-          layer.closeAll('loading');
-          if(res.code === 200) {
-            layer.msg('同步配置保存成功');
-            // 如果有回调函数，则执行
-            if(typeof callback === 'function') {
-              callback();
+        layer.load(1);
+        $.ajax({
+            url: '/api/save-sync-config',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ tasks: tasks }),
+            success: function(res){
+                layer.closeAll('loading');
+                if(res.code === 200) {
+                    layer.msg('同步配置保存成功');
+                    // 如果有回调函数，则执行
+                    if(typeof callback === 'function') {
+                        callback();
+                    }
+                } else {
+                    layer.msg('保存失败: ' + (res.message || '未知错误'));
+                }
+            },
+            error: function(xhr, status, error){
+                layer.closeAll('loading');
+                layer.msg('请求失败: ' + (error || '未知错误'));
             }
-          } else {
-            layer.msg('保存失败: ' + (res.message || '未知错误'));
-          }
-        },
-        error: function(xhr, status, error){
-          layer.closeAll('loading');
-          layer.msg('请求失败: ' + (error || '未知错误'));
-        }
-      });
+        });
     }
 
-    // 添加任务数据验证
+    // 修改验证任务的函数
     function validateTasks(tasks) {
-      if(!tasks || tasks.length === 0) {
-        layer.msg('请至少配置一个同步任务');
-        return false;
-      }
-
-      for(var i = 0; i < tasks.length; i++) {
-        var task = tasks[i];
-        if(!task.taskName) {
-          layer.msg('请填写任务名称');
-          return false;
+        if (!tasks || tasks.length === 0) {
+            layer.msg('请至少配置一个同步任务', {icon: 2});
+            return false;
         }
-        if(task.syncMode === 'data') {
-          if(!task.sourceStorage) {
-            layer.msg('请选择源存储器');
-            return false;
-          }
-          if(!task.targetStorages || task.targetStorages.length === 0) {
-            layer.msg('请选择目标存储器');
-            return false;
-          }
-        } else if(task.syncMode === 'file') {
-          if(!task.paths || task.paths.length === 0) {
-            layer.msg('请配置同步路径');
-            return false;
-          }
-          for(var j = 0; j < task.paths.length; j++) {
-            if(!task.paths[j].srcPath || !task.paths[j].dstPath) {
-              layer.msg('请填写完整的源目录和目标目录');
-              return false;
+        
+        for(let task of tasks) {
+            if(!task.taskName) {
+                layer.msg('任务名称不能为空');
+                return false;
             }
-          }
+            
+            if(task.syncMode === 'data') {
+                if(!task.sourceStorage) {
+                    layer.msg('请选择源存储器');
+                    return false;
+                }
+                if(!task.targetStorages || task.targetStorages.length === 0) {
+                    layer.msg('请选择目标存储器');
+                    return false;
+                }
+                if(!task.syncDirs) {
+                    layer.msg('请输入同步目录');
+                    return false;
+                }
+            } else {
+                if(!task.paths || task.paths.length === 0) {
+                    layer.msg('请至少配置一个路径对');
+                    return false;
+                }
+                for(let path of task.paths) {
+                    if(!path.srcPath || !path.dstPath) {
+                        layer.msg('源目录和目标目录不能为空');
+                        return false;
+                    }
+                }
+            }
         }
-      }
-      return true;
+        return true;
     }
 
     function collectTaskData() {
-      var tasks = [];
-      $('.task-item').each(function(){
-        var $task = $(this);
-        var taskId = $task.attr('data-task-id');
-        var syncMode = $task.find('input[name^="syncMode_"]:checked').val();
-
-        var taskData = {
-          id: parseInt(taskId),
-          baseConfigId: window.baseConfigId,
-          taskName: $task.find('input[name="taskName[]"]').val().trim(),
-          syncMode: syncMode,
-          excludeDirs: $task.find('input[name="excludeDirs[]"]').val(),
-          cron: $task.find('input[name="cron[]"]').val()
-        };
-
-        if(syncMode === 'data') {
-          // 数据同步模式
-          taskData.sourceStorage = $task.find('select[name^="sourceStorage_"]').val();
-          taskData.targetStorages = [];
-          taskData.syncDirs = $task.find('input[name="syncDirs[]"]').val();
-          $task.find('input[name="targetStorages_' + taskId + '[]"]:checked').each(function(){
-            taskData.targetStorages.push($(this).val());
-          });
-        } else {
-          // 文件同步模式
-          taskData.paths = [];
-          $task.find('.path-pair').each(function(){
-            taskData.paths.push({
-              srcPath: $(this).find('input[name^="srcPath_"]').val(),
-              dstPath: $(this).find('input[name^="dstPath_"]').val()
-            });
-          });
-        }
-
-        tasks.push(taskData);
-      });
-      return tasks;
+        var tasks = [];
+        $('.task-item').each(function(index) {
+            var $task = $(this);
+            var taskId = parseInt($task.attr('data-task-id'));
+            var syncMode = $task.find(`input[name="syncMode_${taskId}"]:checked`).val();
+            
+            var task = {
+                id: taskId, // 使用实际的任务ID
+                taskName: $task.find('input[name="taskName[]"]').val().trim(),
+                syncDelAction: $task.find(`input[name="syncDelAction_${taskId}"]:checked`).val(),
+                syncMode: syncMode,
+                excludeDirs: $task.find('input[name="excludeDirs[]"]').val(),
+                cron: $task.find('input[name="cron[]"]').val()
+            };
+            
+            if(syncMode === 'data') {
+                task.sourceStorage = $task.find(`select[name="sourceStorage_${taskId}"]`).val();
+                task.targetStorages = [];
+                task.syncDirs = $task.find('input[name="syncDirs[]"]').val();
+                $task.find(`input[name="targetStorages_${taskId}[]"]:checked`).each(function(){
+                    task.targetStorages.push($(this).val());
+                });
+            } else {
+                task.paths = [];
+                $task.find('.path-pair').each(function(){
+                    task.paths.push({
+                        srcPath: $(this).find('input[name^="srcPath_"]').val(),
+                        dstPath: $(this).find('input[name^="dstPath_"]').val()
+                    });
+                });
+            }
+            
+            tasks.push(task);
+        });
+        return tasks;
     }
 
-    // 修改立即执行的处理
-    $('#runTask').on('click', function(){
-      var tasks = collectTaskData();
-      if(!validateTasks(tasks)) {
-        return false;
-      }
-
-      layer.confirm('确定要立即执行同步任务吗？', function(index){
-        layer.close(index);
-        // 先保存配置
-        saveSyncConfig(tasks, function() {
-          // 配置保存成功后执行任务
-          runTask(tasks);
-        });
-      });
+    // 修改执行任务的事件绑定
+    $(document).on('click', '.execute-task', function() {
+      executeTask();
     });
 
-    function runTask(tasks) {
-      layer.load(1);
-      $.ajax({
-        url: '/api/run-task',
-        method: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify({ tasks: tasks }),
-        success: function(res){
-          layer.closeAll('loading');
-          layer.msg(res.code === 0 ? '任务已启动' : '同步失败: ' + res.msg);
-        },
-        error: function(){
-          layer.closeAll('loading');
-          layer.msg('请求失败');
-        }
-      });
+    // 修改执行任务的函数
+    function executeTask() {
+        layer.confirm('确定要立即执行同步任务吗？', {
+            btn: ['确定', '取消']
+        }, function(index) {
+            layer.close(index);
+            layer.load(1);
+            
+            $.ajax({
+                url: '/api/execute-task',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({}),  // 不需要传递taskId
+                success: function(res) {
+                    layer.closeAll('loading');
+                    if(res.code === 200) {
+                        layer.msg('任务提交成功，请查看日志', {
+                            icon: 1,
+                            time: 2000
+                        });
+                    } else {
+                        layer.msg(res.message || '启动任务失败', {
+                            icon: 2,
+                            time: 2000
+                        });
+                    }
+                },
+                error: function() {
+                    layer.closeAll('loading');
+                    layer.msg('请求失败', {
+                        icon: 2,
+                        time: 2000
+                    });
+                }
+            });
+        });
     }
 
     // 页面加载时获取配置
@@ -864,44 +956,41 @@
             // 清空现有任务列表
             $('#taskList').empty();
 
+            // 按ID排序任务
+            const sortedTasks = [...syncRes.data.tasks].sort((a, b) => a.id - b.id);
+
             // 使用 for...of 循环按顺序处理任务
-            for (const task of syncRes.data.tasks) {
-              if (!task.id) {
-                console.warn('任务缺少ID:', task);
-                continue;
-              }
+            for (const task of sortedTasks) {
+                if (!task.id) {
+                    console.warn('任务缺少ID:', task);
+                    continue;
+                }
 
-              console.log('处理任务:', task);
+                console.log('处理任务:', task);
 
-              // 从模板创建新任务
-              const $task = $taskTemplate.clone();
+                // 从模板创建新任务
+                const $task = $taskTemplate.clone();
+                
+                // 设置任务ID
+                $task.attr('data-task-id', task.id);
+                
+                // 更新所有ID相关属性
+                updateTaskIds($task, task.id);
 
-              // 立即设置任务ID
-              $task.attr('data-task-id', task.id);
+                // 先添加到DOM
+                $('#taskList').append($task);
 
-              // 更新所有ID相关属性
-              $task.find('input[name^="syncMode_"]').attr('name', `syncMode_${task.id}`);
-              $task.find('select[name^="sourceStorage_"]').attr('name', `sourceStorage_${task.id}`);
-              $task.find('#dataSyncConfig_1').attr('id', `dataSyncConfig_${task.id}`);
-              $task.find('#fileSyncConfig_1').attr('id', `fileSyncConfig_${task.id}`);
-              $task.find('#pathPairs_1').attr('id', `pathPairs_${task.id}`);
-              $task.find('input[name^="srcPath_"]').attr('name', `srcPath_${task.id}[]`);
-              $task.find('input[name^="dstPath_"]').attr('name', `dstPath_${task.id}[]`);
+                // 等待一小段时间确保DOM更新完成
+                await new Promise(resolve => setTimeout(resolve, 50));
 
-              // 先添加到DOM
-              $('#taskList').append($task);
+                // 更新该任务的存储器列表
+                await updateTaskStorages($task, window.storagesList);
 
-              // 等待一小段时间确保DOM更新完成
-              await new Promise(resolve => setTimeout(resolve, 50));
+                // 填充数据
+                await fillTaskData($task, task);
 
-              // 更新该任务的存储器列表
-              await updateTaskStorages($task, window.storagesList);
-
-              // 等待一小段时间确保存储器列表更新完成
-              await new Promise(resolve => setTimeout(resolve, 50));
-
-              // 填充数据
-              await fillTaskData($task, task);
+                // 绑定事件
+                bindSyncDelActionEvents($task);
             }
 
             // 最后重新渲染整个表单
@@ -957,6 +1046,32 @@
 
       // 设置任务名称
       $task.find('input[name="taskName[]"]').val(task.taskName);
+
+      // 设置同步目标差异处置策略
+      const taskId = task.id;
+      const groupName = `syncDelAction_${taskId}`;
+      
+      // 先移除之前的点击事件
+      $task.find(`input[name="${groupName}"]`).off('click');
+      
+      // 先清除所有选中状态
+      $task.find(`input[name="${groupName}"]`).prop('checked', false);
+      
+      // 设置正确的选中状态
+      const syncDelAction = task.syncDelAction || 'none';
+      const $syncDelAction = $task.find(`input[name="${groupName}"][value="${syncDelAction}"]`);
+      if ($syncDelAction.length) {
+          $syncDelAction.prop('checked', true);
+      } else {
+          // 如果没有找到匹配的值，默认选中none
+          $task.find(`input[name="${groupName}"][value="none"]`).prop('checked', true);
+      }
+
+      // 重新绑定事件
+      bindSyncDelActionEvents($task);
+      
+      // 重新渲染表单
+      form.render('radio');
 
       // 设置同步模式并显示对应配置
       const $modeRadio = $task.find(`input[name="syncMode_${task.id}"][value="${task.syncMode}"]`);
@@ -1017,14 +1132,7 @@
       }
 
       // 重新绑定查看时间按钮事件
-      $task.find('.check-next-time').off('click').on('click', function() {
-        const cronValue = $task.find('input[name="cron[]"]').val();
-        if(!cronValue) {
-          layer.msg('请先填写cron表达式');
-          return;
-        }
-        updateNextRunTime($task, cronValue);
-      });
+      bindCheckNextTimeEvent($task);
 
       // 等待一小段时间确保DOM更新完成
       await new Promise(resolve => setTimeout(resolve, 50));
@@ -1033,54 +1141,56 @@
     // 添加更新单个任务存储器函数
     async function updateTaskStorages($task, storagesList) {
       const taskId = $task.attr('data-task-id');
-      console.log('更新任务存储器列表:', taskId, storagesList);
-
-      if (!taskId) {
-        console.error('任务ID未设置任务元素:', $task);
-        return;
-      }
+      
+      // 保存当前选中的值
+      const currentSourceStorage = $task.find(`select[name="sourceStorage_${taskId}"]`).val();
+      const currentTargetStorages = [];
+      $task.find(`input[name="targetStorages_${taskId}[]"]:checked`).each(function() {
+          currentTargetStorages.push($(this).val());
+      });
 
       // 更新源存储器下拉框
       const $sourceStorage = $task.find(`select[name="sourceStorage_${taskId}"]`);
-      if (!$sourceStorage.length) {
-        console.error('未找到源存储器下拉框:', taskId);
-        return;
-      }
-
       $sourceStorage.empty().append('<option value="">请选择</option>');
       storagesList.forEach(storage => {
-        $sourceStorage.append(`<option value="${storage}">${storage}</option>`);
+          $sourceStorage.append(
+              `<option value="${storage}">${storage}</option>`
+          );
       });
 
       // 更新目标存储器复选框
       const $targetDiv = $task.find('.target-storages');
-      if (!$targetDiv.length) {
-        console.error('未找到目标存储器容器:', taskId);
-        return;
+      $targetDiv.empty();
+      storagesList.forEach(storage => {
+          $targetDiv.append(
+              `<input type="checkbox" lay-skin="primary" ` +
+              `name="targetStorages_${taskId}[]" ` +
+              `value="${storage}" ` +
+              `title="${storage}">`
+          );
+      });
+
+      // 恢复之前选中的值
+      if(currentSourceStorage) {
+          $sourceStorage.val(currentSourceStorage);
+      }
+      if(currentTargetStorages.length > 0) {
+          currentTargetStorages.forEach(storage => {
+              $targetDiv.find(`input[value="${storage}"]`).prop('checked', true);
+          });
       }
 
-      $targetDiv.empty();
-
-      // 创建复选框组
-      const checkboxHtml = storagesList.map(storage =>
-        `<input type="checkbox" lay-skin="primary" ` +
-        `name="targetStorages_${taskId}[]" ` +
-        `value="${storage}" ` +
-        `title="${storage}">`
-      ).join('');
-
-      $targetDiv.html(checkboxHtml);
-
-      // 重新渲染复选框
-      form.render('checkbox', $targetDiv.parent());
-
-      // 等待一小段时间确保DOM更新完成
-      await new Promise(resolve => setTimeout(resolve, 50));
+      // 重新渲染表单
+      form.render();
     }
 
     // 在页面DOM加载完成后执行
     $(document).ready(function() {
-      // 立即加载配置
+      // 为初始任务绑定事件
+      bindSyncDelActionEvents($('.task-item:first'));
+      bindCheckNextTimeEvent($('.task-item:first'));
+      
+      // 加载配置
       loadConfigs();
     });
 
@@ -1275,6 +1385,94 @@
                 layer.closeAll('loading');
                 layer.msg('请求失败');
             }
+        });
+    }
+
+    // 为标签和选项添加悬停提示
+    $(document).on('mouseenter', '.layui-form-label, input[type="radio"]', function(e) {
+      var title = $(this).attr('title');
+      if (title) {
+        layer.tips(title, this, {
+          tips: [1, '#3595CC'],
+          time: 4000
+        });
+      }
+    });
+
+    // 修改添加任务的函数
+    function addTask() {
+        var taskId = getNextTaskId();
+        var taskHtml = $('#taskList .task-item:first').clone();
+        
+        // 更新任务ID
+        taskHtml.attr('data-task-id', taskId);
+        
+        // 清空输入值
+        taskHtml.find('input[type="text"]').val('');
+        
+        // 更新同步目标差异处置策略的radio按钮
+        taskHtml.find('.syncDelAction-group input[type="radio"]').each(function() {
+            var oldName = $(this).attr('name');
+            $(this).attr('name', `syncDelAction_${taskId}`);
+            // 重置选中状态
+            $(this).prop('checked', $(this).val() === 'none');
+        });
+        
+        // 更新同步模式的radio按钮
+        taskHtml.find('input[name^="syncMode_"]').each(function() {
+            $(this).attr('name', `syncMode_${taskId}`);
+        });
+        
+        // ... 其他代码 ...
+        
+        // 添加到任务列表
+        $('#taskList').append(taskHtml);
+        
+        // 重新渲染表单
+        form.render();
+    }
+
+    // 修改绑定同步目标差异处置策略事件的函数
+    function bindSyncDelActionEvents($task) {
+        const taskId = $task.attr('data-task-id');
+        const groupName = `syncDelAction_${taskId}`;
+        
+        // 为该任务的 radio 按钮添加点击事件
+        $task.find(`input[name="${groupName}"]`).on('click', function() {
+            const $currentGroup = $task.find(`input[name="${groupName}"]`);
+            $currentGroup.not(this).prop('checked', false);
+            $(this).prop('checked', true);
+            // 重新渲染表单
+            form.render('radio');
+        });
+    }
+
+    // 修改执行任务的函数,简化处理
+    function executeTask(taskId) {
+        layer.confirm('确定要立即执行该任务吗？', {
+            btn: ['确定', '取消']
+        }, function(index) {
+            layer.close(index);
+            layer.load(1);
+            
+            $.ajax({
+                url: '/api/execute-task',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ taskId: taskId }),
+                success: function(res) {
+                    layer.closeAll('loading');
+                    if(res.code === 200) {
+                        layer.msg('任务提交成功，请查看日志');
+                    } else {
+                        layer.msg(res.message || '启动任务失败');
+                    }
+                },
+                error: function() {
+                    layer.closeAll('loading');
+                    layer.msg('请求失败');
+                }
+            });
         });
     }
   });
