@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request,jsonify,session,redirect,url_for
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from flask_bootstrap import Bootstrap
 import logging
 import os
@@ -15,10 +15,13 @@ from typing import Dict, List, Optional, Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from logging.handlers import TimedRotatingFileHandler
+import glob
 
 # 创建一个全局的调度器
 scheduler = BackgroundScheduler()
 scheduler.start()
+
 
 def import_from_file(module_name: str, file_path: str) -> Any:
     """动态导入模块"""
@@ -28,11 +31,12 @@ def import_from_file(module_name: str, file_path: str) -> Any:
     spec.loader.exec_module(module)
     return module
 
+
 # 导入AlistSync类
 try:
     current_dir = os.path.dirname(os.path.abspath(__file__))
     alist_sync_ql = import_from_file('alist_sync_ql',
-                                    os.path.join(current_dir, 'alist_sync_ql.py'))
+                                     os.path.join(current_dir, 'alist_sync_ql.py'))
     AlistSync = alist_sync_ql.AlistSync
 except Exception as e:
     print(f"导入alist_sync_ql.py失败: {e}")
@@ -40,17 +44,13 @@ except Exception as e:
     print(f"尝试导入的文件路径: {os.path.join(current_dir, 'alist_sync_ql.py')}")
     raise
 
-
 app = Flask(__name__)
-app.secret_key = os.urandom(24) # 用于session加密
+app.secret_key = os.urandom(24)  # 用于session加密
 Bootstrap(app)
-
 
 # 设置日志记录器
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-
 
 # 假设配置数据存储在当前目录下的config_data目录中，你可以根据实际需求修改
 STORAGE_DIR = os.path.join(app.root_path, 'config_data')
@@ -58,14 +58,10 @@ if not os.path.exists(STORAGE_DIR):
     os.makedirs(STORAGE_DIR)
 
 # 用户配置文件路径
-USER_CONFIG_FILE = os.path.join(os.path.dirname(__file__),STORAGE_DIR, 'users_config.json')
+USER_CONFIG_FILE = os.path.join(os.path.dirname(__file__), STORAGE_DIR, 'users_config.json')
 
 # 确保配置目录存在
 os.makedirs(os.path.dirname(USER_CONFIG_FILE), exist_ok=True)
-
-
-
-
 
 # 如果用户配置文件不存在,创建默认配置
 if not os.path.exists(USER_CONFIG_FILE):
@@ -80,6 +76,7 @@ if not os.path.exists(USER_CONFIG_FILE):
     with open(USER_CONFIG_FILE, 'w', encoding='utf-8') as f:
         json.dump(default_config, f, indent=2, ensure_ascii=False)
 
+
 def load_users():
     """加载用户配置"""
     try:
@@ -88,6 +85,7 @@ def load_users():
     except Exception as e:
         print(f"加载用户配置失败: {e}")
         return {"users": []}
+
 
 def save_users(config):
     """保存用户配置"""
@@ -98,6 +96,7 @@ def save_users(config):
     except Exception as e:
         print(f"保存用户配置失败: {e}")
         return False
+
 
 # 登录验证装饰器
 def login_required(f):
@@ -178,6 +177,8 @@ def current_user():
     except Exception as e:
         print(f"获取当前用户信息失败: {e}")
         return jsonify({'code': 500, 'message': '服务器错误'})
+
+
 # 修改密码接口
 @app.route('/api/change-password', methods=['POST'])
 @login_required
@@ -260,6 +261,7 @@ def save_base_config():
     except Exception as e:
         return jsonify({"code": 500, "message": f"保存失败: {str(e)}"})
 
+
 # 查询基础连接配置接口
 @app.route('/api/get-base-config', methods=['GET'])
 @login_required
@@ -273,6 +275,7 @@ def get_base_config():
         return jsonify({"code": 404, "message": "配置文件不存在"})
     except Exception as e:
         return jsonify({"code": 500, "message": f"读取配置失败: {str(e)}"})
+
 
 @app.route('/api/get-sync-config', methods=['GET'])
 @login_required
@@ -288,17 +291,16 @@ def get_sync_config():
         return jsonify({"code": 500, "message": f"读取配置失败: {str(e)}"})
 
 
-
-
 # 定义超时处理函数
 def timeout_handler(signum, frame):
     raise TimeoutError("连接测试超时")
+
+
 # 测试连接接口
 @app.route('/api/test-connection', methods=['POST'])
 @login_required
 def test_connection():
     try:
-
 
         data = request.get_json()
         base_url = data.get('baseUrl')
@@ -321,21 +323,59 @@ def test_connection():
             alist.close()
 
 
-# 保存同步配置接口
+# 添加以下函数来管理定时任务
+def schedule_sync_tasks():
+    """
+    从配置文件读取并调度所有同步任务
+    """
+    try:
+        # 清除所有现有的任务
+        scheduler.remove_all_jobs()
+        
+        # 加载同步配置
+        sync_config = load_sync_config()
+        if not sync_config or 'tasks' not in sync_config:
+            logger.warning("没有找到有效的同步任务配置")
+            return
+        
+        # 为每个任务创建调度
+        for task in sync_config['tasks']:
+            if 'cron' not in task:
+                logger.warning(f"任务 {task.get('taskName', 'unknown')} 没有配置cron表达式")
+                continue
+                
+            try:
+                job_id = f"sync_task_{task['id']}"
+                # 修改这里，直接传递函数而不是调用结果
+                scheduler.add_job(
+                    func=execute_sync_task,  # 不要加括号调用
+                    trigger=CronTrigger.from_crontab(task['cron']),
+                    id=job_id,
+                    replace_existing=True,
+                    args=[task['id']]  # 通过 args 传递参数
+                )
+                logger.info(f"成功调度任务 {task['taskName']}, ID: {job_id}, Cron: {task['cron']}")
+            except Exception as e:
+                logger.error(f"调度任务 {task.get('taskName', 'unknown')} 失败: {str(e)}")
+                
+    except Exception as e:
+        logger.error(f"调度同步任务时发生错误: {str(e)}")
+
+
+# 修改保存同步配置接口，使其在保存后重新调度任务
 @app.route('/api/save-sync-config', methods=['POST'])
 @login_required
 def save_sync_config():
     data = request.get_json()
-    sync_config_file_path = os.path.join(STORAGE_DIR,'sync_config.json')
+    sync_config_file_path = os.path.join(STORAGE_DIR, 'sync_config.json')
     try:
         with open(sync_config_file_path, 'w') as f:
             json.dump(data, f)
-        return jsonify({"code": 200, "message": "同步配置保存成功"})
+        # 重新调度所有任务    
+        schedule_sync_tasks()
+        return jsonify({"code": 200, "message": "同步配置保存成功并已更新调度"})
     except Exception as e:
         return jsonify({"code": 500, "message": f"保存失败: {str(e)}"})
-
-
-
 
 
 # 假设存储器列表数据也是存储在文件中，这里模拟返回一些示例数据，你可根据实际替换读取逻辑
@@ -386,8 +426,6 @@ def next_run_time():
         return jsonify({"code": 500, "message": f"解析出错: {str(e)}"}), 500
 
 
-
-
 def datetime_to_timestamp(timestring, format="%Y-%m-%d %H:%M:%S"):
     """ 将普通时间格式转换为时间戳(10位), 形如 '2016-05-05 20:28:54'，由format指定 """
     try:
@@ -399,9 +437,11 @@ def datetime_to_timestamp(timestring, format="%Y-%m-%d %H:%M:%S"):
         # 转换成10位时间戳
         return int(time.mktime(timeArray))
 
+
 def get_current_timestamp():
     """ 获取本地当前时间戳(10位): Unix timestamp：是从1970年1月1日（UTC/GMT的午夜）开始所经过的秒数，不考虑闰秒 """
     return int(time.mktime(datetime.datetime.now().timetuple()))
+
 
 def timestamp_after_timestamp(timestamp=None, seconds=0, minutes=0, hours=0, days=0):
     """ 给定时间戳(10位),计算该时间戳之后多少秒、分钟、小时、天的时间戳(本地时间) """
@@ -424,6 +464,7 @@ def timestamp_datetime(timestamp, format='%Y-%m-%d %H:%M:%S'):
     # 最后再经过strftime函数转换为正常日期格式。
     return time.strftime(format, timestamp)
 
+
 def CrontabRunNextTime(sched, timeFormat="%Y-%m-%d %H:%M:%S", queryTimes=5):
     """计算定时任务下次运行时间
     sched str: 定时任务时间表达式
@@ -437,7 +478,8 @@ def CrontabRunNextTime(sched, timeFormat="%Y-%m-%d %H:%M:%S", queryTimes=5):
     else:
         # 以当前时间为基准开始计算
         cron = croniter.croniter(sched, now)
-        return [ cron.get_next(datetime.datetime).strftime(timeFormat) for i in range(queryTimes) ]
+        return [cron.get_next(datetime.datetime).strftime(timeFormat) for i in range(queryTimes)]
+
 
 def CrontabRunTime(sched, ctime, timeFormat="%Y-%m-%d %H:%M:%S"):
     """计算定时任务运行次数
@@ -464,7 +506,6 @@ def CrontabRunTime(sched, ctime, timeFormat="%Y-%m-%d %H:%M:%S"):
         return num
 
 
-
 # 执行任务接口
 @app.route('/api/run-task', methods=['POST'])
 @login_required
@@ -478,14 +519,29 @@ def run_task():
     except Exception as e:
         return jsonify({"code": 500, "message": f"执行任务时发生错误: {str(e)}"})
 
-def execute_sync_task():
+
+def execute_sync_task(id: int | None = None):
     """执行同步任务"""
     try:
+        logger.info("开始执行同步任务")
+        
+        # 加载同步配置获取任务名称
+        sync_config = load_sync_config()
+        task_name = "未知任务"
+        if id is not None and sync_config and 'tasks' in sync_config:
+            task = next((t for t in sync_config['tasks'] if t['id'] == id), None)
+            if task:
+                task_name = task.get('taskName', '未知任务')
+        
+        logger.info(f"任务名称: {task_name}")
+
         # 加载基础配置
         base_config = load_base_config()
         if not base_config:
             logger.error("基础配置为空，无法执行同步任务")
             return False
+
+        logger.info(f"已加载基础配置: {base_config}")
 
         # 清除可能存在的旧环境变量
         for i in range(1, 51):
@@ -516,33 +572,66 @@ def execute_sync_task():
 
         for task in tasks:
             try:
-                if task['syncMode'] == 'data':
-                    # 数据同步模式：一个源存储同步到多个目标存储
-                    syncDirs=task['syncDirs']
-                    source = task['sourceStorage']
-                    for target in task['targetStorages']:
-                        dir_pair = f"{source}/{syncDirs}:{target}/{syncDirs}"
-                        dir_pair= dir_pair.replace('//','/')
-                        if f'DIR_PAIRS' in os.environ:
-                            os.environ['DIR_PAIRS'] += f";{dir_pair}"
-                        else:
-                            os.environ['DIR_PAIRS'] = dir_pair
-                        logger.info(f"添加同步目录对: {dir_pair}")
-                        print("DIR_PAIRS:    ", os.environ.get("DIR_PAIRS"))
+                if id is None or id == task['id']:
+                    task_name = task.get('taskName', '未知任务')
+                    logger.info(f"[{task_name}] 开始处理任务")
+                    
+                    if task['syncMode'] == 'data':
+                        dir_pairs = ''
+                        exclude_dirs = task['excludeDirs']
+                        os.environ['EXCLUDE_DIRS'] = exclude_dirs
+                        # 数据同步模式：一个源存储同步到多个目标存储
+                        syncDirs = task['syncDirs']
+                        source = task['sourceStorage']
 
-                elif task['syncMode'] == 'file':
-                    # 文件同步模式：多个源路径同步到对应的目标路径
-                    paths = task['paths']
-                    for path in paths:
-                        dir_pair = f"{path['srcPath']}:{path['dstPath']}"
-                        if 'DIR_PAIRS' in os.environ:
-                            os.environ['DIR_PAIRS'] += f";{dir_pair}"
-                        else:
-                            os.environ['DIR_PAIRS'] = dir_pair
-                        logger.info(f"添加同步目录对: {dir_pair}")
-                        print("DIR_PAIRS:    ", os.environ.get("DIR_PAIRS"))
+                        if source not in exclude_dirs:
+                            exclude_dirs = f'{source}/{exclude_dirs}'
+                        exclude_dirs = exclude_dirs.replace('//', '/')
+
+                        for target in task['targetStorages']:
+                            if source != target:
+                                dir_pair = f"{source}/{syncDirs}:{target}/{syncDirs}"
+                                dir_pair = dir_pair.replace('//', '/')
+                                if f'DIR_PAIRS' in os.environ:
+                                    os.environ['DIR_PAIRS'] += f";{dir_pair}"
+                                else:
+                                    os.environ['DIR_PAIRS'] = dir_pair
+
+                                if dir_pairs != '':
+                                    dir_pairs += f";{dir_pair}"
+                                else:
+                                    dir_pairs = dir_pair
+                                logger.info(f"[{task_name}] 添加同步目录对: {dir_pair}")
+                                # 调用 alist_sync_ql 的 main 函数
+                                # alist_sync_ql.main(dir_pairs, excludeDirs)
+                                # print("DIR_PAIRS:    ", os.environ.get("DIR_PAIRS"))
+                        alist_sync_ql.main(dir_pairs, exclude_dirs)
+                    elif task['syncMode'] == 'file':
+                        dir_pairs = ''
+                        exclude_dirs = task['excludeDirs']
+                        os.environ['EXCLUDE_DIRS'] = exclude_dirs
+                        # 文件同步模式：多个源路径同步到对应的目标路径
+                        paths = task['paths']
+                        for path in paths:
+                            dir_pair = f"{path['srcPath']}:{path['dstPath']}"
+                            if 'DIR_PAIRS' in os.environ:
+                                os.environ['DIR_PAIRS'] += f";{dir_pair}"
+                            else:
+                                os.environ['DIR_PAIRS'] = dir_pair
+
+                            if dir_pairs != '':
+                                dir_pairs += f";{dir_pair}"
+                            else:
+                                dir_pairs = dir_pair
+
+                            logger.info(f"[{task_name}] 添加同步目录对: {dir_pair}")
+                            print("DIR_PAIRS:    ", os.environ.get("DIR_PAIRS"))
+                        alist_sync_ql.main(dir_pairs, exclude_dirs)
+
+
+
             except KeyError as e:
-                logger.error(f"任务配置错误: {e}")
+                logger.error(f"[{task_name}] 任务配置错误: {e}")
                 continue
 
         # 检查是否有有效的同步目录对
@@ -550,45 +639,18 @@ def execute_sync_task():
             logger.error("没有有效的同步目录对")
             return False
 
-        logger.info(f"开始执行同步任务，同步目录对: {os.environ['DIR_PAIRS']}")
+        logger.info(f"[{task_name}] 开始执行同步任务，同步目录对: {os.environ['DIR_PAIRS']}")
 
         # 调用 alist_sync_ql 的 main 函数
         alist_sync_ql.main()
+        logger.info(f"[{task_name}] 同步任务执行完成")
         return True
 
     except Exception as e:
-        logger.error(f"执行同步任务失败: {e}")
+        logger.error(f"[{task_name}] 执行同步任务失败: {str(e)}")
         return False
 
 
-# @app.route('/', methods=['GET', 'POST'])
-# def index():
-#     if request.method == 'POST':
-#         # 从页面获取参数
-#         base_url = request.form.get('base_url')
-#         username = request.form.get('username')
-#         password = request.form.get('password')
-#         cron_schedule = request.form.get('cron_schedule')
-#         sync_delete_action = request.form.get('sync_delete_action')
-#         dir_pairs = request.form.get('dir_pairs')
-#
-#         # 设置环境变量，以便被原Python代码读取
-#         os.environ['BASE_URL'] = base_url
-#         os.environ['USERNAME'] = username
-#         os.environ['PASSWORD'] = password
-#         os.environ['CRON_SCHEDULE'] = cron_schedule
-#         os.environ['SYNC_DELETE_ACTION'] = sync_delete_action
-#         os.environ['DIR_PAIRS'] = dir_pairs
-#
-#         # 执行原Python代码，这里假设原Python代码文件名为your_code.py
-#         result = subprocess.run(['python', 'alist-sync-test.py'], capture_output=True, text=True)
-#
-#         # 读取并记录Python代码执行过程中打印的内容作为日志
-#         logger.info(result.stdout)
-#
-#         return f"执行结果日志已记录，你可以查看日志详情。<br>返回码: {result.returncode}"
-#     return render_template('index.html')
-#
 def load_base_config() -> dict:
     """加载基础配置"""
     try:
@@ -623,6 +685,104 @@ def load_sync_config() -> dict:
         return {"tasks": []}
 
 
+# 在 if __name__ == '__main__': 之前添加初始化调度的代码
+def init_scheduler():
+    """
+    初始化调度器并加载现有任务
+    """
+    try:
+        schedule_sync_tasks()
+        logger.info("调度器初始化完成")
+    except Exception as e:
+        logger.error(f"初始化调度器失败: {str(e)}")
+
+
+# 修改日志配置部分
+def setup_logger():
+    """配置日志记录器"""
+    # 创建日志目录
+    log_dir = os.path.join(app.root_path, 'config_log')
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # 设置日志文件路径
+    log_file = os.path.join(log_dir, 'alist_sync.log')
+    
+    # 创建 TimedRotatingFileHandler
+    file_handler = TimedRotatingFileHandler(
+        filename=log_file,
+        when='midnight',
+        interval=1,
+        backupCount=7,
+        encoding='utf-8'
+    )
+    
+    # 创建控制台处理器
+    console_handler = logging.StreamHandler()
+    
+    # 设置日志格式
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    
+    # 配置根日志记录器
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    
+    # 清除现有的处理器
+    logger.handlers.clear()
+    
+    # 添加处理器
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+    
+    return logger
+
+
+# 在 app 创建后调用
+logger = setup_logger()
+
+
+# 添加获取日志的接口
+@app.route('/api/logs', methods=['GET'])
+@login_required
+def get_logs():
+    try:
+        # 获取请求参数中的日期
+        date_str = request.args.get('date')
+        
+        # 构建日志文件路径
+        log_dir = os.path.join(app.root_path, 'config_log')
+        
+        # 如果是请求当前日志或没有指定日期
+        if not date_str or date_str == 'current':
+            log_file = os.path.join(log_dir, 'alist_sync.log')
+            date_str = 'current'
+        else:
+            # 历史日志文件
+            log_file = os.path.join(log_dir, f'alist_sync.log.{date_str}')
+            
+        logs = []
+        if os.path.exists(log_file):
+            with open(log_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+            logs.append({
+                'date': date_str,
+                'content': content
+            })
+            
+        return jsonify({
+            'code': 200,
+            'data': logs
+        })
+        
+    except Exception as e:
+        logger.error(f"获取日志失败: {str(e)}")
+        return jsonify({
+            'code': 500,
+            'message': f"获取日志失败: {str(e)}"
+        })
+
 
 if __name__ == '__main__':
+    init_scheduler()
     app.run(debug=True)

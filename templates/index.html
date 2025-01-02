@@ -227,6 +227,7 @@
         <div class="layui-input-block" style="margin-left: 110px;">
           <button type="button" class="layui-btn" id="saveSyncConfig">保存同步配置</button>
           <button type="button" class="layui-btn layui-btn-normal" id="runTask">立即执行</button>
+          <button type="button" class="layui-btn layui-btn-primary" id="viewLogs">查看日志</button>
           <button type="reset" class="layui-btn layui-btn-primary">重置</button>
         </div>
       </div>
@@ -279,10 +280,29 @@
     </form>
   </script>
 
+  <script type="text/html" id="logsViewTpl">
+    <div style="padding: 15px;">
+      <div class="layui-form">
+        <div class="layui-form-item">
+          <label class="layui-form-label">日期选择</label>
+          <div class="layui-input-inline">
+            <input type="text" class="layui-input" id="logDate" placeholder="选择日期">
+          </div>
+          <div class="layui-input-inline">
+            <button type="button" class="layui-btn layui-btn-primary" id="refreshLogs">刷新</button>
+          </div>
+        </div>
+      </div>
+      <div class="logs-content" style="margin-top: 10px; max-height: 500px; overflow-y: auto;">
+      </div>
+    </div>
+  </script>
+
   <script>
-  layui.use(['form', 'layer'], function(){
+  layui.use(['form', 'layer', 'laydate'], function(){
     var form = layui.form,
         layer = layui.layer,
+        laydate = layui.laydate,
         $ = layui.$;
 
     // 加载存储器列表
@@ -649,18 +669,11 @@
       if(!validateTasks(tasks)) {
         return;
       }
-      saveSyncConfig(tasks);
+      saveSyncConfig(tasks, null);
     });
 
     // 保存同步配置的函数
-    function saveSyncConfig(tasks) {
-      // 确保每个任务都有ID
-      tasks.forEach(function(task, index) {
-        if (!task.id) {
-          task.id = index + 1;
-        }
-      });
-
+    function saveSyncConfig(tasks, callback) {
       layer.load(1);
       $.ajax({
         url: '/api/save-sync-config',
@@ -671,6 +684,10 @@
           layer.closeAll('loading');
           if(res.code === 200) {
             layer.msg('同步配置保存成功');
+            // 如果有回调函数，则执行
+            if(typeof callback === 'function') {
+              callback();
+            }
           } else {
             layer.msg('保存失败: ' + (res.message || '未知错误'));
           }
@@ -769,7 +786,11 @@
 
       layer.confirm('确定要立即执行同步任务吗？', function(index){
         layer.close(index);
-        runTask(tasks);
+        // 先保存配置
+        saveSyncConfig(tasks, function() {
+          // 配置保存成功后执行任务
+          runTask(tasks);
+        });
       });
     });
 
@@ -1182,6 +1203,80 @@
       });
       return false;
     });
+
+    // 查看日志按钮点击事件
+    $('#viewLogs').on('click', function(){
+        layer.open({
+            type: 1,
+            title: '执行日志',
+            content: $('#logsViewTpl').html(),
+            area: ['800px', '600px'],
+            success: function(layero, index){
+                // 初始化日期选择器
+                laydate.render({
+                    elem: '#logDate',
+                    max: 0,
+                    done: function(value, date) {
+                        // 如果选择的是当天，传递 'current' 表示查看当前日志
+                        const today = new Date().toISOString().split('T')[0];
+                        if(value === today) {
+                            loadLogs('current');
+                        } else {
+                            loadLogs(value);
+                        }
+                    }
+                });
+                
+                // 默认加载当前日志
+                loadLogs('current');
+                
+                // 绑定刷新按钮事件
+                layero.find('#refreshLogs').on('click', function(){
+                    var date = $('#logDate').val();
+                    // 如果是当天日期，查看当前日志
+                    const today = new Date().toISOString().split('T')[0];
+                    if(date === today) {
+                        loadLogs('current');
+                    } else {
+                        loadLogs(date);
+                    }
+                });
+            }
+        });
+    });
+    
+    // 修改加载日志函数
+    function loadLogs(date) {
+        layer.load(1);
+        $.ajax({
+            url: '/api/logs',
+            method: 'GET',
+            data: { date: date },
+            success: function(res){
+                layer.closeAll('loading');
+                if(res.code === 200){
+                    var html = '';
+                    res.data.forEach(function(log){
+                        html += '<div class="layui-card">';
+                        html += '<div class="layui-card-header">' + 
+                               (log.date === 'current' ? '当前日志' : log.date) + 
+                               '</div>';
+                        html += '<div class="layui-card-body">';
+                        html += '<pre style="white-space: pre-wrap; word-wrap: break-word;">' + 
+                               log.content + '</pre>';
+                        html += '</div></div>';
+                    });
+                    $('.logs-content').html(html || '暂无日志');
+                } else {
+                    layer.msg('获取日志失败: ' + res.message);
+                }
+            },
+            error: function(){
+                layer.closeAll('loading');
+                layer.msg('请求失败');
+            }
+        });
+    }
   });
   </script>
 </body>
