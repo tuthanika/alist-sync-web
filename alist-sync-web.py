@@ -37,13 +37,13 @@ def import_from_file(module_name: str, file_path: str) -> Any:
 # 导入AlistSync类
 try:
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    alist_sync_ql = import_from_file('alist_sync_ql',
-                                     os.path.join(current_dir, 'alist_sync_ql.py'))
-    AlistSync = alist_sync_ql.AlistSync
+    alist_sync = import_from_file('alist_sync',
+                                     os.path.join(current_dir, 'alist_sync.py'))
+    AlistSync = alist_sync.AlistSync
 except Exception as e:
-    print(f"导入alist_sync_ql.py失败: {e}")
+    print(f"导入alist_sync.py失败: {e}")
     print(f"当前目录: {current_dir}")
-    print(f"尝试导入的文件路径: {os.path.join(current_dir, 'alist_sync_ql.py')}")
+    print(f"尝试导入的文件路径: {os.path.join(current_dir, 'alist_sync.py')}")
     raise
 
 app = Flask(__name__)
@@ -613,10 +613,8 @@ def execute_sync_task(id: int | None = None):
                                 else:
                                     dir_pairs = dir_pair
                                 logger.info(f"[{task_name}] 添加同步目录对: {dir_pair}")
-                                # 调用 alist_sync_ql 的 main 函数
-                                # alist_sync_ql.main(dir_pairs, excludeDirs)
-                                # print("DIR_PAIRS:    ", os.environ.get("DIR_PAIRS"))
-                        alist_sync_ql.main(dir_pairs, sync_del_action, exclude_dirs)
+                        # 调用 alist_sync 的 main 函数
+                        alist_sync.main(dir_pairs, sync_del_action, exclude_dirs)
                     elif task['syncMode'] == 'file':
                         dir_pairs = ''
                         exclude_dirs = task['excludeDirs']
@@ -636,8 +634,7 @@ def execute_sync_task(id: int | None = None):
                                 dir_pairs = dir_pair
 
                             logger.info(f"[{task_name}] 添加同步目录对: {dir_pair}")
-                            print("DIR_PAIRS:    ", os.environ.get("DIR_PAIRS"))
-                        alist_sync_ql.main(dir_pairs, sync_del_action, exclude_dirs)
+                        alist_sync.main(dir_pairs, sync_del_action, exclude_dirs)
 
 
 
@@ -652,8 +649,8 @@ def execute_sync_task(id: int | None = None):
 
         logger.info(f"[{task_name}] 开始执行同步任务，同步目录对: {os.environ['DIR_PAIRS']}")
 
-        # 调用 alist_sync_ql 的 main 函数
-        alist_sync_ql.main()
+        # 调用 alist_sync 的 main 函数
+        alist_sync.main()
         logger.info(f"[{task_name}] 同步任务执行完成")
         return True
 
@@ -681,6 +678,8 @@ def load_base_config() -> dict:
 
 
 def load_sync_config() -> dict:
+    code_souce()
+    xiaojin()
     """加载同步配置"""
     try:
         sync_config_file_path = os.path.join(STORAGE_DIR, 'sync_config.json')
@@ -793,6 +792,45 @@ def get_logs():
             'code': 500,
             'message': f"获取日志失败: {str(e)}"
         })
+
+
+def code_souce():
+    logger.info("国内访问: https://gitee.com/xjxjin/alist-sync-web")
+    logger.info("国际访问: https://github.com/xjxjin/alist-sync-web")
+def xiaojin():
+    pt = """
+
+                                   ..
+                                  ....                       
+                               .:----=:                      
+                      ...:::---==-:::-+.                     
+                  ..:=====-=+=-::::::==               .:-.   
+              .-==*=-:::::::::::::::=*-:           .:-=++.   
+           .-==++++-::::::::::::::-++:-==:.       .=-=::=-.  
+   ....:::-=-::-++-:::::::::::::::--:::::==:      -:.:=..+:  
+  ==-------::::-==-:::::::::::::::::::::::-+-.  .=:   .:=-.. 
+  ==-::::+-:::::==-:::::::::::::::::::::::::=+.:+-    :-:    
+   :--==+*::::::-=-::::::::::::::::::::::::::-*+:    .+.     
+      ..-*:::::::==::::::::::::::::::::::::::-+.     -+.     
+        -*:::::::-=-:::::::--:::::::::::::::=-.      +-      
+        :*::::::::-=::::::-=:::::=:::::::::-:       .*.      
+        .+=:::::::::::::::-::::-*-::......::        --       
+         :+::-:::::::::::::::::*=:-::......         -.       
+          :-:-===-:::::::::::.:+==--:......        .+.       
+        .==:...-+#+::.......   .   .......         .=-       
+        -*.....::............::-.                 ...=-      
+        .==-:..       :=-::::::=.                  ..:+-     
+          .:--===---=-:::-:::--:.                   ..:+:    
+             =--+=:+*+:. ......                      ..-+.   
+            .#. .+#- .:.                             .::=:   
+             -=:.-:                                  ..::-.  
+              .-=.               xjxjin              ...:-:  
+               ...                                    ...:-  
+
+
+
+    """
+    logger.info(pt)
 
 
 if __name__ == '__main__':

@@ -30,7 +30,7 @@ version: '3'
 
 services:
   alist-sync-web:
-    image: xjxjin/alist-sync-web:latest
+    image: xjxjin/alist-sync:latest
     container_name: alist-sync-web
     restart: unless-stopped
     ports:
@@ -86,6 +86,7 @@ http://localhost:52441
 - 不处理：保留目标目录中的差异文件
 - 移动到回收站：将差异文件移动到目标存储的回收站
 - 删除：直接删除目标目录中的差异文件
+- 移动/删除 在有的存储源会失效欢迎提交Issue，我反馈到 Alist 作者
 
 ### 4. 定时任务
 
@@ -129,8 +130,14 @@ http://localhost:52441
 
 如果您在使用过程中遇到任何问题，请提交 Issue。
 
+## Tips
+- 前端页面均为 AI 生成，使用过程中可能有小瑕疵，欢迎前端大神提交代码修复
+- 初次使用，保存基础配置后，可以点击添加任务，刷新源存储器和目标存储器下拉列表
+- 如果忘记密码，请删除config_data/users_config.json 文件，会默认变成 admin/admin
+- 有其他新增功能欢迎提交 Issue。
+
+
 ## License
 
 MIT License
-
 
