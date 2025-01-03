@@ -216,7 +216,7 @@ class AlistSync:
                     return True
 
                 if self.sync_delete:
-                    logger.info(f"执行同步删除操作 - 目录: {dst_dir}")
+                    # logger.info(f"执行同步删除操作 - 目录: {dst_dir}")
                     self._handle_sync_delete(src_dir, dst_dir, src_contents)
 
                 for item in src_contents:
@@ -233,7 +233,7 @@ class AlistSync:
     def _handle_sync_delete(self, src_dir: str, dst_dir: str, src_contents: List[Dict]):
         """处理同步删除逻辑"""
         try:
-            logger.info(f"处理同步删除 - 目录: {dst_dir}")
+            # logger.info(f"处理同步删除 - 目录: {dst_dir}")
             dst_contents = self.get_directory_contents(dst_dir)
             src_names = {item["name"] for item in src_contents}
             dst_names = {item["name"] for item in dst_contents}
@@ -244,8 +244,10 @@ class AlistSync:
                 return
 
             for name in to_delete:
-                logger.info(f"处理删除项目: {name}")
+
                 if self.sync_delete_action == "move":
+                    logger.info(f"处理同步移动 - 目录: {dst_dir}")
+                    logger.info(f"处理移动项目: {name}")
                     trash_dir = self._get_trash_dir(dst_dir)
                     if trash_dir:
                         if not self.is_path_exists(trash_dir):
@@ -254,6 +256,8 @@ class AlistSync:
                         logger.info(f"移动到回收站: {name}")
                         self.move_item(dst_dir, trash_dir, name)
                 else:  # delete
+                    logger.info(f"处理同步删除 - 目录: {dst_dir}")
+                    logger.info(f"处理删除项目: {name}")
                     logger.info(f"直接删除项目: {name}")
                     self._directory_operation("remove", dir=dst_dir, names=[name])
         except Exception as e:
