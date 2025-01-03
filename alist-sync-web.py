@@ -795,8 +795,8 @@ def get_logs():
 
 
 def code_souce():
-    logger.info("国内访问: https://gitee.com/xjxjin/alist-sync-web")
-    logger.info("国际访问: https://github.com/xjxjin/alist-sync-web")
+    logger.info("国内访问: https://gitee.com/xjxjin/alist-sync")
+    logger.info("国际访问: https://github.com/xjxjin/alist-sync")
 def xiaojin():
     pt = """
 
