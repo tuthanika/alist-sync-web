@@ -28,5 +28,5 @@ ENV PYTHONUNBUFFERED=1
 # 暴露端口
 EXPOSE 52441
 
-# 启动命令
-CMD ["python", "app.py"] 
+# 修改启动命令，使用正确的文件名
+CMD ["python", "alist-sync-web.py"] 

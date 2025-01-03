@@ -544,7 +544,8 @@ def execute_sync_task(id: int | None = None):
             logger.error("基础配置为空，无法执行同步任务")
             return False
 
-        logger.info(f"已加载基础配置: {base_config}")
+        # logger.info(f"已加载基础配置: {base_config}")
+        logger.info(f"已加载基础配置")
 
         # 清除可能存在的旧环境变量
         for i in range(1, 51):
@@ -670,7 +671,8 @@ def load_base_config() -> dict:
 
         with open(config_file_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
-            logger.info(f"成功加载基础配置: {config}")
+            # logger.info(f"成功加载基础配置: {config}")
+            logger.info(f"成功加载基础配置")
             return config
     except Exception as e:
         logger.error(f"加载基础配置失败: {e}")
