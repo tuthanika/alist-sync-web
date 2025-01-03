@@ -15,7 +15,10 @@ RUN apt-get update \
         build-essential \
         libssl-dev \
         libffi-dev \
-    && pip install --no-cache-dir wheel \
+        rustc \
+        cargo \
+    && pip install --upgrade pip \
+    && pip install --no-cache-dir wheel setuptools \
     && pip install --no-cache-dir -r requirements.txt \
     && apt-get purge -y --auto-remove \
         gcc \
@@ -23,6 +26,8 @@ RUN apt-get update \
         build-essential \
         libssl-dev \
         libffi-dev \
+        rustc \
+        cargo \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制项目文件

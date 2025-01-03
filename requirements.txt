@@ -15,8 +15,10 @@ python-dateutil==2.8.2
 PyYAML==6.0.1
 croniter==2.0.1
 
-# 加密
-bcrypt==4.1.2
+# 加密 (使用预编译的wheel)
+bcrypt==4.1.2; platform_machine == 'x86_64'
+bcrypt==4.1.2; platform_machine == 'aarch64'
+bcrypt==4.1.2; platform_machine == 'armv7l'
 
 # UI 框架依赖
 Werkzeug==3.0.1
