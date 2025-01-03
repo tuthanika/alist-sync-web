@@ -372,6 +372,9 @@ def main():
     try:
         # 获取同步目录对
         dir_pairs_list = get_dir_pairs_from_env()
+
+        logger.info(f"")
+        logger.info(f"")
         num = 1
         for pair in dir_pairs_list:
             logger.info(f"No.{num:02d}【{pair}】")
