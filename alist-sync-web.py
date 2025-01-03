@@ -18,6 +18,8 @@ from apscheduler.triggers.cron import CronTrigger
 from logging.handlers import TimedRotatingFileHandler
 import glob
 
+from passlib.hash import sha256_crypt
+
 # 创建一个全局的调度器
 scheduler = BackgroundScheduler()
 scheduler.start()
@@ -69,7 +71,7 @@ if not os.path.exists(USER_CONFIG_FILE):
         "users": [
             {
                 "username": "admin",
-                "password": "admin"
+                "password": sha256_crypt.hash("admin")
             }
         ]
     }
@@ -137,12 +139,11 @@ def api_login():
         # 加载用户配置
         config = load_users()
 
-        # 查找用户
+        # 查找用户并验证密码
         user = next((user for user in config['users']
-                     if user['username'] == username
-                     and user['password'] == password), None)
+                     if user['username'] == username), None)
 
-        if user:
+        if user and sha256_crypt.verify(password, user['password']):
             session['user_id'] = username
             return jsonify({'code': 200, 'message': '登录成功'})
         else:
@@ -205,7 +206,7 @@ def change_password():
             return jsonify({'code': 404, 'message': '用户不存在'})
 
         # 验证原密码
-        if user['password'] != old_password:
+        if not sha256_crypt.verify(old_password, user['password']):
             return jsonify({'code': 400, 'message': '原密码错误'})
 
         # 如果修改了用户名,确保新用户名不存在
@@ -218,7 +219,7 @@ def change_password():
 
         # 更新用户名和密码
         user['username'] = new_username
-        user['password'] = new_password
+        user['password'] = sha256_crypt.hash(new_password)
 
         # 保存配置
         if save_users(config):

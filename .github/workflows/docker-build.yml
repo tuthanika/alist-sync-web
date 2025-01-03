@@ -15,7 +15,7 @@ env:
   PLATFORMS: linux/amd64,linux/arm64,linux/arm/v7
 
 jobs:
-  docker:
+  alist-sync-web-docker:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
