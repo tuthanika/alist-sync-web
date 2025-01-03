@@ -870,31 +870,38 @@
 
       layer.confirm('确定要立即执行同步任务吗？', function(index){
         layer.close(index);
+        
         // 先保存配置
-        saveSyncConfig(tasks, function() {
-          // 配置保存成功后执行任务
-          runTask(tasks);
+        $.ajax({
+          url: '/api/save-sync-config',
+          method: 'POST',
+          contentType: 'application/json',
+          data: JSON.stringify({ tasks: tasks }),
+          success: function(res){
+            if(res.code === 200) {
+              // 配置保存成功后，发送执行请求并立即显示提示
+              $.ajax({
+                url: '/api/run-task',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ tasks: tasks })
+              });
+              
+              // 立即显示提示信息
+              layer.msg('任务提交成功，请查看日志', {
+                icon: 1,
+                time: 2000
+              });
+            } else {
+              layer.msg('配置保存失败: ' + (res.message || '未知错误'));
+            }
+          },
+          error: function(){
+            layer.msg('配置保存失败，请重试');
+          }
         });
       });
     });
-
-    function runTask(tasks) {
-      layer.load(1);
-      $.ajax({
-        url: '/api/run-task',
-        method: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify({ tasks: tasks }),
-        success: function(res){
-          layer.closeAll('loading');
-          layer.msg(res.code === 0 ? '任务已启动' : '同步失败: ' + res.msg);
-        },
-        error: function(){
-          layer.closeAll('loading');
-          layer.msg('请求失败');
-        }
-      });
-    }
 
     // 页面加载时获取配置
     async function loadConfigs() {
