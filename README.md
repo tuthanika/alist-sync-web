@@ -2,6 +2,20 @@
 
 一个基于 Web 界面的 Alist 存储同步工具，支持多任务管理、定时同步、差异处理等功能。
 
+
+<div align="center">
+  
+[![github tag][gitHub-tag-image]][github-url] [![docker pulls][docker-pulls-image]][docker-url] [![docker image size][docker-image-size-image]][docker-url]
+
+[gitHub-tag-image]: https://img.shields.io/github/v/tag/xjxjin/alist-sync
+[docker-pulls-image]: https://img.shields.io/docker/pulls/xjxjin/alist-sync
+[docker-image-size-image]: https://img.shields.io/docker/image-size/xjxjin/alist-sync
+[github-url]: https://github.com/xjxjin/alist-sync
+[docker-url]: https://hub.docker.com/r/xjxjin/alist-sync
+</div>
+
+
+
 ## 功能特点
 
 - 📱 美观的 Web 管理界面
@@ -12,6 +26,9 @@
 - 📝 详细的同步日志记录
 - 🔒 支持用户认证和密码管理
 - 🐳 支持 Docker 部署
+
+
+
 
 ## 快速开始
 
