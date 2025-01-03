@@ -26,7 +26,7 @@ COPY --from=builder /app /app
 ENV PYTHONUNBUFFERED=1
 
 # 暴露端口
-EXPOSE 8000
+EXPOSE 52441
 
 # 启动命令
 CMD ["python", "app.py"] 
