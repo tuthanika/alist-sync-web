@@ -1,0 +1,28 @@
+# Web 框架
+Flask==3.0.0
+
+# 定时任务
+APScheduler==3.10.4
+
+# HTTP 客户端
+requests==2.31.0
+
+# 日期时间处理
+python-dateutil==2.8.2
+
+# 工具库
+PyYAML==6.0.1
+croniter==2.0.1
+
+# 加密
+bcrypt==4.1.2
+
+# UI 框架依赖
+Werkzeug==3.0.1
+Jinja2==3.1.2
+
+# 日志处理
+colorlog==6.7.0
+
+# 文件系统操作
+pathlib==1.0.1 
