@@ -8,12 +8,22 @@ WORKDIR /app
 COPY requirements.txt .
 
 # 安装构建依赖和项目依赖
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc python3-dev && \
-    pip install --no-cache-dir -r requirements.txt && \
-    apt-get remove -y gcc python3-dev && \
-    apt-get autoremove -y && \
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        gcc \
+        python3-dev \
+        build-essential \
+        libssl-dev \
+        libffi-dev \
+    && pip install --no-cache-dir wheel \
+    && pip install --no-cache-dir -r requirements.txt \
+    && apt-get purge -y --auto-remove \
+        gcc \
+        python3-dev \
+        build-essential \
+        libssl-dev \
+        libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # 复制项目文件
 COPY . .
