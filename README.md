@@ -37,7 +37,7 @@
 1. 创建必要的目录：
 
 ```bash
-mkdir -p config_data config_log
+mkdir -p /DATA/AppData/alist-sync-web/data 
 ```
 
 2. 创建 docker-compose.yml：
@@ -53,8 +53,7 @@ services:
     ports:
       - "52441:52441"
     volumes:
-      - /DATA/AppData/alist-sync-web/config_data:/app/config_data
-      - /DATA/AppData/alist-sync-web/config_log:/app/config_log
+      - /DATA/AppData/alist-sync-web/data:/app/data
     environment:
       - TZ=Asia/Shanghai 
 ```
@@ -91,11 +90,13 @@ http://localhost:52441
 - 配置同步目录
 - 支持排除目录
 - 支持多目标存储同步
+- 参照最后图片
 
 #### 文件同步模式
 - 手动配置源路径和目标路径
 - 支持多个路径对
 - 支持排除目录
+- 参照最后图片
 
 ### 3. 差异处理策略
 
@@ -119,12 +120,12 @@ http://localhost:52441
 
 ## 配置文件说明
 
-所有配置文件存储在 `config_data` 目录：
+所有配置文件存储在 `data/config` 目录：
 - `base_config.json`：基础连接配置
 - `sync_config.json`：同步任务配置
 - `users_config.json`：用户认证配置
 
-日志文件存储在 `config_log` 目录：
+日志文件存储在 `data/log` 目录：
 - `alist_sync.log`：当前日志
 - `alist_sync.log.YYYY-MM-DD`：历史日志
 
@@ -150,11 +151,12 @@ http://localhost:52441
 ## Tips
 - 前端页面均为 AI 生成，使用过程中可能有小瑕疵，欢迎前端大神提交代码修复
 - 初次使用，保存基础配置后，可以点击添加任务，刷新源存储器和目标存储器下拉列表
-- 如果忘记密码，请删除config_data/users_config.json 文件，会默认变成 admin/admin
+- 如果忘记密码，请删除data/config/users_config.json 文件，会默认变成 admin/admin
 - 有其他新增功能欢迎提交 Issue。
-
-
+- 文件同步填写全目录，参照最后面图片
 ## License
 
 MIT License
+
+
 

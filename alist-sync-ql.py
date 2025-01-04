@@ -15,6 +15,32 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def parse_time_and_adjust_utc(date_str: str) -> datetime:
+    """
+    解析时间字符串，如果是UTC格式（包含'Z'）则加8小时
+    """
+    iso_8601_pattern = r'(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?([+-]\d{2}:\d{2}|Z)?'
+    match_iso = re.match(iso_8601_pattern, date_str)
+    if match_iso:
+        year, month, day, hour, minute, second, microsecond, timezone = match_iso.groups()
+        if microsecond:
+            microsecond = int(float(microsecond) * 1000000)
+        else:
+            microsecond = 0
+        dt = datetime(int(year), int(month), int(day), int(hour), int(minute), int(second), microsecond)
+        if timezone == "Z":
+            dt = dt + timedelta(hours=8)  # UTC时间加8小时
+        elif timezone:
+            # 处理其他时区偏移量
+            sign = 1 if timezone[0] == "+" else -1
+            hours = int(timezone[1:3])
+            minutes = int(timezone[4:6])
+            offset = timedelta(hours=sign * hours, minutes=sign * minutes)
+            dt = dt - offset
+        return dt
+    return None
+
+
 class AlistSync:
     def __init__(self, base_url: str, username: str, password: str, sync_delete_action: str = "none"):
         """初始化AlistSync类"""
@@ -37,6 +63,7 @@ class AlistSync:
             port_part = match.group(2)
             port = int(port_part) if port_part else (443 if self.base_url.startswith("https://") else 80)
 
+            logger.info(f"创建连接 - 主机: {host}, 端口: {port}")
             return (http.client.HTTPSConnection(host, port)
                     if self.base_url.startswith("https://")
                     else http.client.HTTPConnection(host, port))
@@ -157,20 +184,11 @@ class AlistSync:
                 if not self.create_directory(dst_dir):
                     return False
             result = self._recursive_copy(src_dir, dst_dir, exclude_dirs)
-            logger.info(f"目录同步完成 - 源目录: {src_dir}, 目标目录: {dst_dir}")
+            logger.info(f"目录同步完成 - 源目录: {src_dir}, 目标目录: {dst_dir}, 结果: {'成功' if result else '失败'}")
             return result
         except Exception as e:
             logger.error(f"同步目录失败: {str(e)}")
             return False
-
-    def close(self):
-        """关闭连接"""
-        try:
-            if hasattr(self, 'connection') and self.connection:
-                self.connection.close()
-                logger.debug("连接已关闭")
-        except Exception as e:
-            logger.error(f"关闭连接时发生错误: {str(e)}")
 
     def _recursive_copy(self, src_dir: str, dst_dir: str, exclude_dirs: str = None) -> bool:
         """递归复制目录内容"""
@@ -238,27 +256,14 @@ class AlistSync:
                 return f"{mount_path}/trash{dst_dir[len(mount_path):]}"
         return None
 
-    def parse_time_and_adjust_utc(self, date_str: str) -> Optional[datetime]:
-        """解析时间字符串，如果是UTC格式（包含'Z'）则加8小时"""
-        iso_8601_pattern = r'(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?([+-]\d{2}:\d{2}|Z)?'
-        match_iso = re.match(iso_8601_pattern, date_str)
-        if match_iso:
-            year, month, day, hour, minute, second, microsecond, timezone = match_iso.groups()
-            if microsecond:
-                microsecond = int(float(microsecond) * 1000000)
-            else:
-                microsecond = 0
-            dt = datetime(int(year), int(month), int(day), int(hour), int(minute), int(second), microsecond)
-            if timezone == "Z":
-                dt = dt + timedelta(hours=8)  # UTC时间加8小时
-            elif timezone:
-                sign = 1 if timezone[0] == "+" else -1
-                hours = int(timezone[1:3])
-                minutes = int(timezone[4:6])
-                offset = timedelta(hours=sign * hours, minutes=sign * minutes)
-                dt = dt - offset
-            return dt
-        return None
+    def close(self):
+        """关闭连接"""
+        try:
+            if hasattr(self, 'connection') and self.connection:
+                self.connection.close()
+                logger.debug("连接已关闭")
+        except Exception as e:
+            logger.error(f"关闭连接时发生错误: {str(e)}")
 
     def get_file_info(self, path: str) -> Optional[Dict]:
         """获取文件信息，包括大小和修改时间"""
@@ -280,10 +285,12 @@ class AlistSync:
                 logger.info(f"排除目录: {src_dir}, 跳过同步")
                 return True
 
+            # 如果是目录，递归处理
             if item.get('is_dir', False):
                 src_subdir = f"{src_dir}/{item_name}".replace('//', '/')
                 dst_subdir = f"{dst_dir}/{item_name}".replace('//', '/')
 
+                # 确保目标子目录存在
                 if not self.is_path_exists(dst_subdir):
                     logger.info(f"创建目标子目录: {dst_subdir}")
                     if not self.create_directory(dst_subdir):
@@ -291,14 +298,18 @@ class AlistSync:
                 else:
                     logger.info(f"文件夹【{dst_subdir}】已存在，跳过创建")
 
+                # 递归复制子目录
                 return self._recursive_copy(src_subdir, dst_subdir, exclude_dirs)
             else:
+                # 处理文件
                 dst_path = f"{dst_dir}/{item_name}".replace('//', '/')
 
+                # 检查目标文件是否存在
                 if not self.is_path_exists(dst_path):
                     logger.info(f"复制文件: {item_name}")
                     return self.copy_item(src_dir, dst_dir, item_name)
                 else:
+                    # 获取源文件和目标文件信息
                     src_size = item.get("size")
                     dst_info = self.get_file_info(dst_path)
 
@@ -308,21 +319,25 @@ class AlistSync:
 
                     dst_size = dst_info.get("size")
 
+                    # 比较文件大小
                     if src_size == dst_size:
                         logger.info(f"文件【{item_name}】已存在且大小相同，跳过复制")
                         return True
                     else:
-                        src_modified = self.parse_time_and_adjust_utc(item.get("modified"))
-                        dst_modified = self.parse_time_and_adjust_utc(dst_info.get("modified"))
+                        # 比较修改时间
+                        src_modified = parse_time_and_adjust_utc(item.get("modified"))
+                        dst_modified = parse_time_and_adjust_utc(dst_info.get("modified"))
 
                         if src_modified and dst_modified and dst_modified > src_modified:
                             logger.info(f"文件【{item_name}】目标文件修改时间晚于源文件，跳过复制")
                             return True
                         else:
                             logger.info(f"文件【{item_name}】存在变更，删除并重新复制")
+                            # 删除旧文件
                             if not self._directory_operation("remove", dir=dst_dir, names=[item_name]):
                                 logger.error(f"删除目标文件失败: {dst_path}")
                                 return False
+                            # 复制新文件
                             return self.copy_item(src_dir, dst_dir, item_name)
 
         except Exception as e:
@@ -346,19 +361,24 @@ def get_dir_pairs_from_env() -> List[str]:
     return dir_pairs_list
 
 
-def main():
+def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str = None):
+    """主函数，用于命令行执行"""
     code_souce()
     xiaojin()
 
-
-    """主函数"""
     logger.info("开始执行同步任务")
 
     # 从环境变量获取配置
     base_url = os.environ.get("BASE_URL")
     username = os.environ.get("USERNAME")
     password = os.environ.get("PASSWORD")
-    sync_delete_action = os.environ.get("SYNC_DELETE_ACTION", "none")
+    if sync_del_action:
+        sync_delete_action = sync_del_action
+    else:
+        sync_delete_action = os.environ.get("SYNC_DELETE_ACTION", "none")
+
+    if not exclude_dirs:
+        exclude_dirs = os.environ.get("EXCLUDE_DIRS")
 
     if not all([base_url, username, password]):
         logger.error("必要的环境变量未设置")
@@ -371,7 +391,11 @@ def main():
 
     try:
         # 获取同步目录对
-        dir_pairs_list = get_dir_pairs_from_env()
+        dir_pairs_list = []
+        if dir_pairs:
+            dir_pairs_list.extend(dir_pairs.split(";"))
+        else:
+            dir_pairs_list = get_dir_pairs_from_env()
 
         logger.info(f"")
         logger.info(f"")
@@ -392,8 +416,8 @@ def main():
             logger.info(f"第 [{i:02d}] 个 同步目录【{src_dir.strip()}】---->【 {dst_dir.strip()}】")
             logger.info(f"")
             logger.info(f"")
-            alist_sync.sync_directories(src_dir.strip(), dst_dir.strip())
             i += 1
+            alist_sync.sync_directories(src_dir.strip(), dst_dir.strip(), exclude_dirs)
 
         logger.info("所有同步任务执行完成")
     except Exception as e:
@@ -402,9 +426,12 @@ def main():
         alist_sync.close()
         logger.info("关闭连接，任务结束")
 
+
 def code_souce():
     logger.info("国内访问: https://gitee.com/xjxjin/alist-sync")
     logger.info("国际访问: https://github.com/xjxjin/alist-sync")
+
+
 def xiaojin():
     pt = """
 
@@ -439,5 +466,7 @@ def xiaojin():
 
     """
     logger.info(pt)
+
+
 if __name__ == '__main__':
     main()

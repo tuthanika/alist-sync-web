@@ -55,7 +55,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # 假设配置数据存储在当前目录下的config_data目录中，你可以根据实际需求修改
-STORAGE_DIR = os.path.join(app.root_path, 'config_data')
+STORAGE_DIR = os.path.join(app.root_path, 'data/config')
 if not os.path.exists(STORAGE_DIR):
     os.makedirs(STORAGE_DIR)
 
@@ -415,13 +415,7 @@ def next_run_time():
         cron_expression = data.get('cron')
         if not cron_expression:
             return jsonify({"code": 400, "message": "缺少cron参数"}), 400
-        # 简单校验，如果末尾是?就去除（只是简单处理，更严谨校验可完善此处）
-        # 替换问号为星号
-        # modified_cron = cron_expression.replace('?', '*')
-        # 找到第一个空格的索引位置，然后从该位置往后取字符串
-        # index_of_first_space = modified_cron.find(' ')
-        # new_cron = modified_cron[index_of_first_space + 1:]
-        next_time_list = CrontabRunNextTime(cron_expression)
+        next_time_list = crontab_run_next_time(cron_expression)
         return jsonify({"code": 200, "data": next_time_list})
     except Exception as e:
         return jsonify({"code": 500, "message": f"解析出错: {str(e)}"}), 500
@@ -460,13 +454,10 @@ def timestamp_datetime(timestamp, format='%Y-%m-%d %H:%M:%S'):
     """ 将时间戳(10位)转换为可读性的时间 """
     # timestamp为传入的值为时间戳(10位整数)，如：1332888820
     timestamp = time.localtime(timestamp)
-    # 经过localtime转换后变成
-    ## time.struct_time(tm_year=2012, tm_mon=3, tm_mday=28, tm_hour=6, tm_min=53, tm_sec=40, tm_wday=2, tm_yday=88, tm_isdst=0)
-    # 最后再经过strftime函数转换为正常日期格式。
     return time.strftime(format, timestamp)
 
 
-def CrontabRunNextTime(sched, timeFormat="%Y-%m-%d %H:%M:%S", queryTimes=5):
+def crontab_run_next_time(cron_expression, timeFormat="%Y-%m-%d %H:%M:%S", queryTimes=5):
     """计算定时任务下次运行时间
     sched str: 定时任务时间表达式
     timeFormat str: 格式为"%Y-%m-%d %H:%M"
@@ -478,33 +469,33 @@ def CrontabRunNextTime(sched, timeFormat="%Y-%m-%d %H:%M:%S", queryTimes=5):
         raise
     else:
         # 以当前时间为基准开始计算
-        cron = croniter.croniter(sched, now)
+        cron = croniter.croniter(cron_expression, now)
         return [cron.get_next(datetime.datetime).strftime(timeFormat) for i in range(queryTimes)]
 
 
-def CrontabRunTime(sched, ctime, timeFormat="%Y-%m-%d %H:%M:%S"):
-    """计算定时任务运行次数
-    sched str: 定时任务时间表达式
-    ctime str: 定时任务创建的时间，与timeFormat格式对应
-    timeFormat str: 格式为"%Y-%m-%d %H:%M"
-    """
-    try:
-        ctimeStrp = datetime.datetime.strptime(ctime, timeFormat)
-    except ValueError:
-        raise
-    else:
-        # 根据定时任务创建时间开始计算
-        cron = croniter.croniter(sched, ctimeStrp)
-        now = get_current_timestamp()
-        num = 0
-        while 1:
-            timestring = cron.get_next(datetime.datetime).strftime(timeFormat)
-            timestamp = datetime_to_timestamp(timestring, "%Y-%m-%d %H:%M:%S")
-            if timestamp > now:
-                break
-            else:
-                num += 1
-        return num
+# def CrontabRunTime(sched, ctime, timeFormat="%Y-%m-%d %H:%M:%S"):
+#     """计算定时任务运行次数
+#     sched str: 定时任务时间表达式
+#     ctime str: 定时任务创建的时间，与timeFormat格式对应
+#     timeFormat str: 格式为"%Y-%m-%d %H:%M"
+#     """
+#     try:
+#         ctimeStrp = datetime.datetime.strptime(ctime, timeFormat)
+#     except ValueError:
+#         raise
+#     else:
+#         # 根据定时任务创建时间开始计算
+#         cron = croniter.croniter(sched, ctimeStrp)
+#         now = get_current_timestamp()
+#         num = 0
+#         while 1:
+#             timestring = cron.get_next(datetime.datetime).strftime(timeFormat)
+#             timestamp = datetime_to_timestamp(timestring, "%Y-%m-%d %H:%M:%S")
+#             if timestamp > now:
+#                 break
+#             else:
+#                 num += 1
+#         return num
 
 
 # 执行任务接口
@@ -565,11 +556,6 @@ def execute_sync_task(id: int | None = None):
         if not sync_config:
             logger.error("同步配置为空，无法执行同步任务")
             return False
-
-        # 设置同步删除动作
-        # sync_del_action = task.get('syncDelAction', 'none') if task else 'none'
-        # os.environ['SYNC_DELETE_ACTION'] = sync_del_action
-        # logger.info(f"[{task_name}] 设置同步删除动作: {sync_del_action}")
 
         # 处理任务列表
         tasks = sync_config.get('tasks', [])
@@ -636,8 +622,6 @@ def execute_sync_task(id: int | None = None):
                             logger.info(f"[{task_name}] 添加同步目录对: {dir_pair}")
                         alist_sync.main(dir_pairs, sync_del_action, exclude_dirs)
 
-
-
             except KeyError as e:
                 logger.error(f"[{task_name}] 任务配置错误: {e}")
                 continue
@@ -678,8 +662,6 @@ def load_base_config() -> dict:
 
 
 def load_sync_config() -> dict:
-    code_souce()
-    xiaojin()
     """加载同步配置"""
     try:
         sync_config_file_path = os.path.join(STORAGE_DIR, 'sync_config.json')
@@ -712,7 +694,7 @@ def init_scheduler():
 def setup_logger():
     """配置日志记录器"""
     # 创建日志目录
-    log_dir = os.path.join(app.root_path, 'config_log')
+    log_dir = os.path.join(app.root_path, 'data/log')
     os.makedirs(log_dir, exist_ok=True)
 
     # 设置日志文件路径
@@ -762,7 +744,7 @@ def get_logs():
         date_str = request.args.get('date')
 
         # 构建日志文件路径
-        log_dir = os.path.join(app.root_path, 'config_log')
+        log_dir = os.path.join(app.root_path,'data/log')
 
         # 如果是请求当前日志或没有指定日期
         if not date_str or date_str == 'current':
@@ -792,45 +774,6 @@ def get_logs():
             'code': 500,
             'message': f"获取日志失败: {str(e)}"
         })
-
-
-def code_souce():
-    logger.info("国内访问: https://gitee.com/xjxjin/alist-sync")
-    logger.info("国际访问: https://github.com/xjxjin/alist-sync")
-def xiaojin():
-    pt = """
-
-                                   ..
-                                  ....                       
-                               .:----=:                      
-                      ...:::---==-:::-+.                     
-                  ..:=====-=+=-::::::==               .:-.   
-              .-==*=-:::::::::::::::=*-:           .:-=++.   
-           .-==++++-::::::::::::::-++:-==:.       .=-=::=-.  
-   ....:::-=-::-++-:::::::::::::::--:::::==:      -:.:=..+:  
-  ==-------::::-==-:::::::::::::::::::::::-+-.  .=:   .:=-.. 
-  ==-::::+-:::::==-:::::::::::::::::::::::::=+.:+-    :-:    
-   :--==+*::::::-=-::::::::::::::::::::::::::-*+:    .+.     
-      ..-*:::::::==::::::::::::::::::::::::::-+.     -+.     
-        -*:::::::-=-:::::::--:::::::::::::::=-.      +-      
-        :*::::::::-=::::::-=:::::=:::::::::-:       .*.      
-        .+=:::::::::::::::-::::-*-::......::        --       
-         :+::-:::::::::::::::::*=:-::......         -.       
-          :-:-===-:::::::::::.:+==--:......        .+.       
-        .==:...-+#+::.......   .   .......         .=-       
-        -*.....::............::-.                 ...=-      
-        .==-:..       :=-::::::=.                  ..:+-     
-          .:--===---=-:::-:::--:.                   ..:+:    
-             =--+=:+*+:. ......                      ..-+.   
-            .#. .+#- .:.                             .::=:   
-             -=:.-:                                  ..::-.  
-              .-=.               xjxjin              ...:-:  
-               ...                                    ...:-  
-
-
-
-    """
-    logger.info(pt)
 
 
 if __name__ == '__main__':

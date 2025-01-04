@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timedelta
 import os
 import logging
-from typing import List, Dict, Optional, Tuple, Union
+from typing import List, Dict, Optional, Union
 from logging.handlers import TimedRotatingFileHandler
 
 
@@ -52,10 +52,35 @@ def setup_logger():
 logger = setup_logger()
 
 
+def parse_time_and_adjust_utc(date_str: str) -> datetime:
+    """
+    解析时间字符串，如果是UTC格式（包含'Z'）则加8小时
+    """
+    iso_8601_pattern = r'(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?([+-]\d{2}:\d{2}|Z)?'
+    match_iso = re.match(iso_8601_pattern, date_str)
+    if match_iso:
+        year, month, day, hour, minute, second, microsecond, timezone = match_iso.groups()
+        if microsecond:
+            microsecond = int(float(microsecond) * 1000000)
+        else:
+            microsecond = 0
+        dt = datetime(int(year), int(month), int(day), int(hour), int(minute), int(second), microsecond)
+        if timezone == "Z":
+            dt = dt + timedelta(hours=8)  # UTC时间加8小时
+        elif timezone:
+            # 处理其他时区偏移量
+            sign = 1 if timezone[0] == "+" else -1
+            hours = int(timezone[1:3])
+            minutes = int(timezone[4:6])
+            offset = timedelta(hours=sign * hours, minutes=sign * minutes)
+            dt = dt - offset
+        return dt
+    return None
+
+
 class AlistSync:
     def __init__(self, base_url: str, username: str, password: str, sync_delete_action: str = "none"):
         """初始化AlistSync类"""
-        # logger.info(f"初始化 AlistSync，基础URL: {base_url}, 用户名: {username}, 同步删除动作: {sync_delete_action}")
         self.base_url = base_url
         self.username = username
         self.password = password
@@ -216,7 +241,6 @@ class AlistSync:
                     return True
 
                 if self.sync_delete:
-                    # logger.info(f"执行同步删除操作 - 目录: {dst_dir}")
                     self._handle_sync_delete(src_dir, dst_dir, src_contents)
 
                 for item in src_contents:
@@ -233,7 +257,6 @@ class AlistSync:
     def _handle_sync_delete(self, src_dir: str, dst_dir: str, src_contents: List[Dict]):
         """处理同步删除逻辑"""
         try:
-            # logger.info(f"处理同步删除 - 目录: {dst_dir}")
             dst_contents = self.get_directory_contents(dst_dir)
             src_names = {item["name"] for item in src_contents}
             dst_names = {item["name"] for item in dst_contents}
@@ -244,7 +267,6 @@ class AlistSync:
                 return
 
             for name in to_delete:
-
                 if self.sync_delete_action == "move":
                     logger.info(f"处理同步移动 - 目录: {dst_dir}")
                     logger.info(f"处理移动项目: {name}")
@@ -279,31 +301,6 @@ class AlistSync:
                 logger.debug("连接已关闭")
         except Exception as e:
             logger.error(f"关闭连接时发生错误: {str(e)}")
-
-    def parse_time_and_adjust_utc(self, date_str: str) -> datetime:
-        """
-        解析时间字符串，如果是UTC格式（包含'Z'）则加8小时
-        """
-        iso_8601_pattern = r'(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?([+-]\d{2}:\d{2}|Z)?'
-        match_iso = re.match(iso_8601_pattern, date_str)
-        if match_iso:
-            year, month, day, hour, minute, second, microsecond, timezone = match_iso.groups()
-            if microsecond:
-                microsecond = int(float(microsecond) * 1000000)
-            else:
-                microsecond = 0
-            dt = datetime(int(year), int(month), int(day), int(hour), int(minute), int(second), microsecond)
-            if timezone == "Z":
-                dt = dt + timedelta(hours=8)  # UTC时间加8小时
-            elif timezone:
-                # 处理其他时区偏移量
-                sign = 1 if timezone[0] == "+" else -1
-                hours = int(timezone[1:3])
-                minutes = int(timezone[4:6])
-                offset = timedelta(hours=sign * hours, minutes=sign * minutes)
-                dt = dt - offset
-            return dt
-        return None
 
     def get_file_info(self, path: str) -> Optional[Dict]:
         """获取文件信息，包括大小和修改时间"""
@@ -365,8 +362,8 @@ class AlistSync:
                         return True
                     else:
                         # 比较修改时间
-                        src_modified = self.parse_time_and_adjust_utc(item.get("modified"))
-                        dst_modified = self.parse_time_and_adjust_utc(dst_info.get("modified"))
+                        src_modified = parse_time_and_adjust_utc(item.get("modified"))
+                        dst_modified = parse_time_and_adjust_utc(dst_info.get("modified"))
 
                         if src_modified and dst_modified and dst_modified > src_modified:
                             logger.info(f"文件【{item_name}】目标文件修改时间晚于源文件，跳过复制")
@@ -385,8 +382,27 @@ class AlistSync:
             return False
 
 
+def get_dir_pairs_from_env() -> List[str]:
+    """从环境变量获取目录对列表"""
+    dir_pairs_list = []
+
+    # 获取主DIR_PAIRS
+    if dir_pairs := os.environ.get("DIR_PAIRS"):
+        dir_pairs_list.extend(dir_pairs.split(";"))
+
+    # 获取DIR_PAIRS1到DIR_PAIRS50
+    for i in range(1, 51):
+        if dir_pairs := os.environ.get(f"DIR_PAIRS{i}"):
+            dir_pairs_list.extend(dir_pairs.split(";"))
+
+    return dir_pairs_list
+
+
 def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str = None):
     """主函数，用于命令行执行"""
+    code_souce()
+    xiaojin()
+
     logger.info("开始执行同步任务")
 
     # 从环境变量获取配置
@@ -397,6 +413,9 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
         sync_delete_action = sync_del_action
     else:
         sync_delete_action = os.environ.get("SYNC_DELETE_ACTION", "none")
+
+    if not exclude_dirs:
+        exclude_dirs = os.environ.get("EXCLUDE_DIRS")
 
     if not all([base_url, username, password]):
         logger.error("必要的环境变量未设置")
@@ -422,8 +441,6 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
             logger.info(f"No.{num:02d}【{pair}】")
             num += 1
 
-
-
         # 执行同步
         i = 1
         for pair in dir_pairs_list:
@@ -447,20 +464,45 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
         logger.info("关闭连接，任务结束")
 
 
-def get_dir_pairs_from_env() -> List[str]:
-    """从环境变量获取目录对列表"""
-    dir_pairs_list = []
+def code_souce():
+    logger.info("国内访问: https://gitee.com/xjxjin/alist-sync")
+    logger.info("国际访问: https://github.com/xjxjin/alist-sync")
 
-    # 获取主DIR_PAIRS
-    if dir_pairs := os.environ.get("DIR_PAIRS"):
-        dir_pairs_list.extend(dir_pairs.split(";"))
 
-    # 获取DIR_PAIRS1到DIR_PAIRS50
-    for i in range(1, 51):
-        if dir_pairs := os.environ.get(f"DIR_PAIRS{i}"):
-            dir_pairs_list.extend(dir_pairs.split(";"))
+def xiaojin():
+    pt = """
 
-    return dir_pairs_list
+                                   ..
+                                  ....                       
+                               .:----=:                      
+                      ...:::---==-:::-+.                     
+                  ..:=====-=+=-::::::==               .:-.   
+              .-==*=-:::::::::::::::=*-:           .:-=++.   
+           .-==++++-::::::::::::::-++:-==:.       .=-=::=-.  
+   ....:::-=-::-++-:::::::::::::::--:::::==:      -:.:=..+:  
+  ==-------::::-==-:::::::::::::::::::::::-+-.  .=:   .:=-.. 
+  ==-::::+-:::::==-:::::::::::::::::::::::::=+.:+-    :-:    
+   :--==+*::::::-=-::::::::::::::::::::::::::-*+:    .+.     
+      ..-*:::::::==::::::::::::::::::::::::::-+.     -+.     
+        -*:::::::-=-:::::::--:::::::::::::::=-.      +-      
+        :*::::::::-=::::::-=:::::=:::::::::-:       .*.      
+        .+=:::::::::::::::-::::-*-::......::        --       
+         :+::-:::::::::::::::::*=:-::......         -.       
+          :-:-===-:::::::::::.:+==--:......        .+.       
+        .==:...-+#+::.......   .   .......         .=-       
+        -*.....::............::-.                 ...=-      
+        .==-:..       :=-::::::=.                  ..:+-     
+          .:--===---=-:::-:::--:.                   ..:+:    
+             =--+=:+*+:. ......                      ..-+.   
+            .#. .+#- .:.                             .::=:   
+             -=:.-:                                  ..::-.  
+              .-=.               xjxjin              ...:-:  
+               ...                                    ...:-  
+
+
+
+    """
+    logger.info(pt)
 
 
 if __name__ == '__main__':
