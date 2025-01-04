@@ -11,8 +11,8 @@ on:
       - main
 
 env:
-  DOCKER_IMAGE: xjxjin/alist-sync  # 请替换成你的 Docker Hub 用户名和镜像名
-  PLATFORMS: linux/amd64,linux/arm64,linux/arm/v7
+  DOCKER_IMAGE: xjxjin/alist-sync-web
+  PLATFORMS: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64,linux/ppc64le,linux/s390x
 
 jobs:
   alist-sync-web-docker:
@@ -36,9 +36,13 @@ jobs:
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
+        with:
+          platforms: ${{ env.PLATFORMS }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          platforms: ${{ env.PLATFORMS }}
 
       - name: Login to Docker Hub
         if: github.event_name != 'pull_request'
@@ -57,6 +61,9 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            BUILDKIT_MULTI_PLATFORM=1
+          outputs: type=image,push-by-digest=true
 
       - name: Update Docker Hub Description
         if: github.event_name != 'pull_request'
