@@ -141,17 +141,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         id: release_body
         run: |
-          # 读取模板文件并替换变量
-          PLATFORMS_LIST=$(echo "${{ env.PLATFORMS }}" | tr ',' '\n' | sed 's/^/- /')
-          RELEASE_BODY=$(cat RELEASE.md | \
-            sed "s|\${DOCKER_IMAGE}|${{ env.DOCKER_IMAGE }}|g" | \
-            sed "s|\${VERSION}|${{ github.ref_name }}|g" | \
-            sed "s|\${PLATFORMS}|$PLATFORMS_LIST|g")
-          # 将处理后的内容保存到文件
-          echo "$RELEASE_BODY" > release_body.txt
-          # 处理多行字符串
+          # 直接读取 RELEASE.md 内容
           echo 'RELEASE_BODY<<EOF' >> $GITHUB_ENV
-          cat release_body.txt >> $GITHUB_ENV
+          cat RELEASE.md >> $GITHUB_ENV
           echo 'EOF' >> $GITHUB_ENV
 
       - name: Create Release
