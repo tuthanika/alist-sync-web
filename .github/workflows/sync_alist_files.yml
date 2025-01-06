@@ -80,6 +80,63 @@ jobs:
           readme-filepath: ./README.md
           short-description: "Alist-Sync - A tool for syncing files between Alist storages"
       # 以下是新增的 Release 相关步骤
+      - name: Create Source Archive
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          # 创建临时目录
+          TEMP_DIR="/tmp/alist-sync-release"
+          mkdir -p "$TEMP_DIR"
+          
+          # 定义要包含的文件列表
+          INCLUDE_FILES=(
+            "alist-sync-web.py"
+            "alist_sync.py"
+            "requirements.txt"
+            "Dockerfile"
+            "docker-compose.yml"
+            "README.md"
+            "static"
+            "templates"
+          )
+          
+          # 定义平台列表
+          PLATFORMS=(
+            "linux-386"
+            "linux-amd64"
+            "linux-arm-v6"
+            "linux-arm-v7"
+            "linux-arm64"
+            "linux-ppc64le"
+            "linux-s390x"
+          )
+          
+          # 为每个平台创建一个包
+          for platform in "${PLATFORMS[@]}"; do
+            # 创建平台特定的临时目录
+            PLATFORM_DIR="$TEMP_DIR/$platform"
+            mkdir -p "$PLATFORM_DIR"
+            
+            # 复制文件到平台目录
+            for item in "${INCLUDE_FILES[@]}"; do
+              if [ -e "$item" ]; then
+                cp -r "$item" "$PLATFORM_DIR/"
+              fi
+            done
+            
+            # 在平台目录中创建压缩包
+            cd "$PLATFORM_DIR"
+            
+            # 创建 ZIP 文件
+            zip -r "alist-sync-${{ github.ref_name }}-${platform}.zip" ./*
+            
+            # 创建 TAR.GZ 文件
+            tar --exclude='.[^/]*' -czf "alist-sync-${{ github.ref_name }}-${platform}.tar.gz" ./*
+            
+            # 移动压缩包到工作目录
+            mv "alist-sync-${{ github.ref_name }}-${platform}.zip" "$GITHUB_WORKSPACE/"
+            mv "alist-sync-${{ github.ref_name }}-${platform}.tar.gz" "$GITHUB_WORKSPACE/"
+          done
+
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         id: create_release
@@ -110,45 +167,27 @@ jobs:
                 environment:
                   - TZ=Asia/Shanghai
             ```
+            
+            ## 支持的平台
+            - linux/386
+            - linux/amd64
+            - linux/arm/v6
+            - linux/arm/v7
+            - linux/arm64
+            - linux/ppc64le
+            - linux/s390x
           files: |
-            alist-sync-${{ github.ref_name }}.zip
-            alist-sync-${{ github.ref_name }}.tar.gz
-
-      - name: Create Source Archive
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          # 创建临时目录
-          TEMP_DIR="/tmp/alist-sync-release"
-          mkdir -p "$TEMP_DIR"
-          
-          # 定义要包含的文件列表
-          INCLUDE_FILES=(
-            "alist-sync-web.py"
-            "alist_sync.py"
-            "requirements.txt"
-            "Dockerfile"
-            "docker-compose.yml"
-            "README.md"
-            "static"
-            "templates"
-          )
-          
-          # 复制指定的文件到临时目录
-          for item in "${INCLUDE_FILES[@]}"; do
-            if [ -e "$item" ]; then
-              cp -r "$item" "$TEMP_DIR/"
-            fi
-          done
-          
-          # 在临时目录中创建压缩包
-          cd "$TEMP_DIR"
-          
-          # 创建 ZIP 文件
-          zip -r "alist-sync-${{ github.ref_name }}.zip" ./*
-          
-          # 创建 TAR.GZ 文件
-          tar --exclude='.[^/]*' -czf "alist-sync-${{ github.ref_name }}.tar.gz" ./*
-          
-          # 移动压缩包到工作目录
-          mv "alist-sync-${{ github.ref_name }}.zip" "$GITHUB_WORKSPACE/"
-          mv "alist-sync-${{ github.ref_name }}.tar.gz" "$GITHUB_WORKSPACE/"
+            alist-sync-${{ github.ref_name }}-linux-386.zip
+            alist-sync-${{ github.ref_name }}-linux-386.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-amd64.zip
+            alist-sync-${{ github.ref_name }}-linux-amd64.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-arm-v6.zip
+            alist-sync-${{ github.ref_name }}-linux-arm-v6.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-arm-v7.zip
+            alist-sync-${{ github.ref_name }}-linux-arm-v7.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-arm64.zip
+            alist-sync-${{ github.ref_name }}-linux-arm64.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-ppc64le.zip
+            alist-sync-${{ github.ref_name }}-linux-ppc64le.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-s390x.zip
+            alist-sync-${{ github.ref_name }}-linux-s390x.tar.gz
