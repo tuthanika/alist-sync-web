@@ -141,10 +141,11 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         id: release_body
         run: |
-          # 直接读取 RELEASE.md 内容
-          echo 'RELEASE_BODY<<EOF' >> $GITHUB_ENV
-          cat RELEASE.md >> $GITHUB_ENV
-          echo 'EOF' >> $GITHUB_ENV
+          # 将 release 内容保存到输出变量
+          CONTENT=$(cat RELEASE.md)
+          echo "RELEASE_BODY<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CONTENT" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
@@ -155,7 +156,7 @@ jobs:
           name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
-          body: ${{ env.RELEASE_BODY }}
+          body: ${{ steps.release_body.outputs.RELEASE_BODY }}
           files: |
             alist-sync-${{ github.ref_name }}-linux-386.zip
             alist-sync-${{ github.ref_name }}-linux-386.tar.gz
