@@ -118,12 +118,37 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           # 创建临时目录
-          mkdir -p /tmp/alist-sync-release
-          # 复制所需文件到临时目录
-          rsync -av --exclude='.git' --exclude='.github' --exclude='__pycache__' . /tmp/alist-sync-release/
+          TEMP_DIR="/tmp/alist-sync-release"
+          mkdir -p "$TEMP_DIR"
+          
+          # 定义要包含的文件列表
+          INCLUDE_FILES=(
+            "alist-sync-web.py"
+            "alist_sync.py"
+            "requirements.txt"
+            "Dockerfile"
+            "docker-compose.yml"
+            "README.md"
+            "static"
+            "templates"
+          )
+          
+          # 复制指定的文件到临时目录
+          for item in "${INCLUDE_FILES[@]}"; do
+            if [ -e "$item" ]; then
+              cp -r "$item" "$TEMP_DIR/"
+            fi
+          done
+          
           # 在临时目录中创建压缩包
-          cd /tmp/alist-sync-release
-          zip -r alist-sync-${{ github.ref_name }}.zip .
-          tar czf alist-sync-${{ github.ref_name }}.tar.gz .
+          cd "$TEMP_DIR"
+          
+          # 创建 ZIP 文件
+          zip -r "alist-sync-${{ github.ref_name }}.zip" ./*
+          
+          # 创建 TAR.GZ 文件
+          tar --exclude='.[^/]*' -czf "alist-sync-${{ github.ref_name }}.tar.gz" ./*
+          
           # 移动压缩包到工作目录
-          mv alist-sync-${{ github.ref_name }}.* $GITHUB_WORKSPACE/
+          mv "alist-sync-${{ github.ref_name }}.zip" "$GITHUB_WORKSPACE/"
+          mv "alist-sync-${{ github.ref_name }}.tar.gz" "$GITHUB_WORKSPACE/"
