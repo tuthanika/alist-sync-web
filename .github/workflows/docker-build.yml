@@ -15,12 +15,12 @@ env:
   PLATFORMS: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64,linux/ppc64le,linux/s390x
 
 jobs:
-  docker:
+  alist-sync-docker:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
@@ -33,13 +33,12 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
-
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
+
       - name: Login to Docker Hub
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
@@ -51,7 +50,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-      
+
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
@@ -73,65 +72,3 @@ jobs:
           repository: ${{ env.DOCKER_IMAGE }}
           readme-filepath: ./README.md
           short-description: "Alist-Sync - A tool for syncing files between Alist storages"
-
-      # 以下是新增的 Release 相关步骤
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
-          body: |
-            ## Docker 部署
-            ```bash
-            docker pull xjxjin/alist-sync-web:${{ steps.get_version.outputs.VERSION }}
-            ```
-            
-            或使用 docker-compose:
-            ```yaml
-            version: '3'
-            services:
-              alist-sync-web:
-                image: xjxjin/alist-sync-web:${{ steps.get_version.outputs.VERSION }}
-                container_name: alist-sync-web
-                restart: unless-stopped
-                ports:
-                  - "52441:52441"
-                volumes:
-                  - /DATA/AppData/alist-sync-web/data:/app/data
-                environment:
-                  - TZ=Asia/Shanghai
-            ```
-
-      - name: Create Source Archive
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          zip -r alist-sync-${{ steps.get_version.outputs.VERSION }}.zip . -x "*.git*"
-          tar czf alist-sync-${{ steps.get_version.outputs.VERSION }}.tar.gz --exclude=.git .
-
-      - name: Upload Release Assets
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./alist-sync-${{ steps.get_version.outputs.VERSION }}.zip
-          asset_name: alist-sync-${{ steps.get_version.outputs.VERSION }}.zip
-          asset_content_type: application/zip
-
-      - name: Upload Release Assets (tar.gz)
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./alist-sync-${{ steps.get_version.outputs.VERSION }}.tar.gz
-          asset_name: alist-sync-${{ steps.get_version.outputs.VERSION }}.tar.gz
-          asset_content_type: application/gzip
