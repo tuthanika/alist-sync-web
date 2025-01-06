@@ -1,5 +1,11 @@
 # 构建阶段
-FROM python:3.11-slim AS builder
+FROM --platform=$BUILDPLATFORM python:3.11-slim AS builder
+
+# 设置构建参数
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ARG TARGETOS
+ARG TARGETARCH
 
 # 设置工作目录
 WORKDIR /build
@@ -16,10 +22,12 @@ COPY requirements.txt .
 # 创建虚拟环境并安装依赖
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+
+# 根据目标平台安装依赖
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 最终阶段
-FROM python:3.11-slim
+FROM --platform=$TARGETPLATFORM python:3.11-slim
 
 # 设置工作目录
 WORKDIR /app
@@ -28,9 +36,10 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 
 # 设置环境变量
-ENV PATH="/opt/venv/bin:$PATH"
-ENV PYTHONUNBUFFERED=1
-ENV TZ=Asia/Shanghai
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    TZ=Asia/Shanghai \
+    PYTHONDONTWRITEBYTECODE=1
 
 # 安装运行时依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -39,8 +48,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && ln -fs /usr/share/zoneinfo/${TZ} /etc/localtime \
     && dpkg-reconfigure -f noninteractive tzdata
 
+# 创建必要的目录
+RUN mkdir -p data/config data/log
+
 # 复制应用文件
-COPY . .
+COPY alist-sync-web.py .
+COPY alist_sync.py .
+COPY templates/ templates/
+COPY static/ static/
 
 # 暴露端口
 EXPOSE 52441
