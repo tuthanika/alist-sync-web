@@ -137,6 +137,23 @@ jobs:
             mv "alist-sync-${{ github.ref_name }}-${platform}.tar.gz" "$GITHUB_WORKSPACE/"
           done
 
+      - name: Generate Release Body
+        if: startsWith(github.ref, 'refs/tags/')
+        id: release_body
+        run: |
+          # 读取模板文件并替换变量
+          PLATFORMS_LIST=$(echo "${{ env.PLATFORMS }}" | tr ',' '\n' | sed 's/^/- /')
+          RELEASE_BODY=$(cat RELEASE.md | \
+            sed "s|\${DOCKER_IMAGE}|${{ env.DOCKER_IMAGE }}|g" | \
+            sed "s|\${VERSION}|${{ github.ref_name }}|g" | \
+            sed "s|\${PLATFORMS}|$PLATFORMS_LIST|g")
+          # 将处理后的内容保存到文件
+          echo "$RELEASE_BODY" > release_body.txt
+          # 处理多行字符串
+          echo 'RELEASE_BODY<<EOF' >> $GITHUB_ENV
+          cat release_body.txt >> $GITHUB_ENV
+          echo 'EOF' >> $GITHUB_ENV
+
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         id: create_release
@@ -146,36 +163,7 @@ jobs:
           name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
-          body: |
-            ## Docker 部署
-            ```bash
-            docker pull ${{ env.DOCKER_IMAGE }}:${{ github.ref_name }}
-            ```
-            
-            或使用 docker-compose:
-            ```yaml
-            version: '3'
-            services:
-              alist-sync-web:
-                image: ${{ env.DOCKER_IMAGE }}:${{ github.ref_name }}
-                container_name: alist-sync-web
-                restart: unless-stopped
-                ports:
-                  - "52441:52441"
-                volumes:
-                  - /DATA/AppData/alist-sync-web/data:/app/data
-                environment:
-                  - TZ=Asia/Shanghai
-            ```
-            
-            ## 支持的平台
-            - linux/386
-            - linux/amd64
-            - linux/arm/v6
-            - linux/arm/v7
-            - linux/arm64
-            - linux/ppc64le
-            - linux/s390x
+          body: ${{ env.RELEASE_BODY }}
           files: |
             alist-sync-${{ github.ref_name }}-linux-386.zip
             alist-sync-${{ github.ref_name }}-linux-386.tar.gz
