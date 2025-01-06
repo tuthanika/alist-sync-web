@@ -10,8 +10,15 @@ on:
     branches:
       - main
 
+# 添加权限配置
+permissions:
+  contents: write
+  packages: write
+  issues: write
+  pull-requests: write
+
 env:
-  DOCKER_IMAGE: ${{ github.repository }}  # 请替换成你的 Docker Hub 用户名和镜像名
+  DOCKER_IMAGE: ${{ github.repository }}
   PLATFORMS: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64,linux/ppc64le,linux/s390x
 
 jobs:
@@ -72,3 +79,43 @@ jobs:
           repository: ${{ env.DOCKER_IMAGE }}
           readme-filepath: ./README.md
           short-description: "Alist-Sync - A tool for syncing files between Alist storages"
+      # 以下是新增的 Release 相关步骤
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          body: |
+            ## Docker 部署
+            ```bash
+            docker pull ${{ env.DOCKER_IMAGE }}:${{ github.ref_name }}
+            ```
+            
+            或使用 docker-compose:
+            ```yaml
+            version: '3'
+            services:
+              alist-sync-web:
+                image: ${{ env.DOCKER_IMAGE }}:${{ github.ref_name }}
+                container_name: alist-sync-web
+                restart: unless-stopped
+                ports:
+                  - "52441:52441"
+                volumes:
+                  - /DATA/AppData/alist-sync-web/data:/app/data
+                environment:
+                  - TZ=Asia/Shanghai
+            ```
+          files: |
+            alist-sync-${{ github.ref_name }}.zip
+            alist-sync-${{ github.ref_name }}.tar.gz
+
+      - name: Create Source Archive
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          zip -r alist-sync-${{ github.ref_name }}.zip . -x "*.git*"
+          tar czf alist-sync-${{ github.ref_name }}.tar.gz --exclude=.git .
