@@ -1,8 +1,16 @@
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
-from flask_bootstrap import Bootstrap
+from fastapi import FastAPI, Request, Response, HTTPException, Depends, Form
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.responses import Response
+from pydantic import BaseModel
+import uvicorn
 import logging
 import os
 import json
+from pathlib import Path  # 使用内置 pathlib
 
 import croniter, datetime, time
 from functools import wraps
@@ -21,6 +29,11 @@ import glob
 import hashlib
 import secrets
 import base64
+
+import schedule
+from threading import Thread
+
+import aiofiles  # 用于异步文件操作
 
 # 创建一个全局的调度器
 scheduler = BackgroundScheduler()
@@ -48,24 +61,35 @@ except Exception as e:
     print(f"尝试导入的文件路径: {os.path.join(current_dir, 'alist_sync.py')}")
     raise
 
-app = Flask(__name__)
-app.secret_key = os.urandom(24)  # 用于session加密
-Bootstrap(app)
+app = FastAPI()
+# 使用固定的密钥，避免重启后 session 失效
+SECRET_KEY = os.environ.get('SECRET_KEY', os.urandom(24))
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SECRET_KEY,
+    session_cookie="alist_sync_session",
+    max_age=86400,  # 1天过期
+    same_site="lax",
+    https_only=False
+)
+templates = Jinja2Templates(directory="templates")
+
+# 挂载静态文件
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # 设置日志记录器
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# 假设配置数据存储在当前目录下的config_data目录中，你可以根据实际需求修改
-STORAGE_DIR = os.path.join(app.root_path, 'data/config')
-if not os.path.exists(STORAGE_DIR):
-    os.makedirs(STORAGE_DIR)
+# 修改路径处理
+STORAGE_DIR = Path(app.root_path) / 'data' / 'config'
+STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 # 用户配置文件路径
-USER_CONFIG_FILE = os.path.join(os.path.dirname(__file__), STORAGE_DIR, 'users_config.json')
+USER_CONFIG_FILE = Path(__file__).parent / STORAGE_DIR / 'users_config.json'
 
 # 确保配置目录存在
-os.makedirs(os.path.dirname(USER_CONFIG_FILE), exist_ok=True)
+USER_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
 # 添加密码加密和验证函数
@@ -117,135 +141,128 @@ if not os.path.exists(USER_CONFIG_FILE):
         json.dump(default_config, f, indent=2, ensure_ascii=False)
 
 
-def load_users():
+async def load_users():
     """加载用户配置"""
     try:
-        with open(USER_CONFIG_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        async with aiofiles.open(USER_CONFIG_FILE, 'r', encoding='utf-8') as f:
+            content = await f.read()
+            return json.loads(content)
     except Exception as e:
-        print(f"加载用户配置失败: {e}")
+        logger.error(f"加载用户配置失败: {e}")
         return {"users": []}
 
 
-def save_users(config):
+async def save_users(config):
     """保存用户配置"""
     try:
-        with open(USER_CONFIG_FILE, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
+        async with aiofiles.open(USER_CONFIG_FILE, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(config, indent=2, ensure_ascii=False))
         return True
     except Exception as e:
-        print(f"保存用户配置失败: {e}")
+        logger.error(f"保存用户配置失败: {e}")
         return False
 
 
-# 登录验证装饰器
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
-            return redirect(url_for('login'))
-        return f(*args, **kwargs)
-
-    return decorated_function
+# 定义请求模型
+class LoginCredentials(BaseModel):
+    username: str
+    password: str
 
 
-# 默认路由重定向到登录页
-@app.route('/')
-def index():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    return render_template('index.html')
+# 默认路由
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request):
+    if "user_id" not in request.session:
+        return RedirectResponse(url="/login")
+    return templates.TemplateResponse("index.html", {"request": request})
 
 
-# 登录页面路由
-@app.route('/login')
-def login():
-    return render_template('login.html')
+# 登录页面
+@app.get("/login", response_class=HTMLResponse)
+async def login(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
 
 
-# 登录接口
-@app.route('/api/login', methods=['POST'])
-def api_login():
+# 登录API
+@app.post("/api/login")
+async def api_login(credentials: LoginCredentials, request: Request):
     try:
-        data = request.get_json()
-        username = data.get('username')
-        password = data.get('password')
-
-        if not username or not password:
-            return jsonify({'code': 400, 'message': '用户名和密码不能为空'})
-
-        # 加载用户配置
-        config = load_users()
-
-        # 查找用户并验证密码
+        if not credentials.username or not credentials.password:
+            raise HTTPException(status_code=400, detail="用户名和密码不能为空")
+            
+        config = await load_users()
         user = next((user for user in config['users']
-                     if user['username'] == username), None)
+                     if user['username'] == credentials.username), None)
 
-        if user and verify_password(password, user['password']):
-            session['user_id'] = username
-            return jsonify({'code': 200, 'message': '登录成功'})
+        if user and verify_password(credentials.password, user['password']):
+            request.session['user_id'] = credentials.username
+            return JSONResponse({"code": 200, "message": "登录成功"})
         else:
-            return jsonify({'code': 401, 'message': '用户名或密码错误'})
+            raise HTTPException(status_code=401, detail="用户名或密码错误")
 
+    except HTTPException as e:
+        raise e
     except Exception as e:
-        print(f"登录失败: {e}")
-        return jsonify({'code': 500, 'message': '服务器错误'})
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# 登录验证依赖
+async def get_current_user(request: Request):
+    if "user_id" not in request.session:
+        raise HTTPException(status_code=401, detail="未登录")
+    return request.session["user_id"]
+
+
+# 需要登录的API示例
+@app.get("/api/current-user")
+async def current_user(user: str = Depends(get_current_user)):
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "username": user
+        }
+    }
 
 
 # 检查登录状态接口
-@app.route('/api/check-login')
-def check_login():
-    if 'user_id' in session:
-        return jsonify({'code': 200, 'message': 'logged in'})
-    return jsonify({'code': 401, 'message': 'not logged in'})
-
-
-# 获取当前用户信息接口
-@app.route('/api/current-user')
-@login_required
-def current_user():
-    try:
-        username = session['user_id']
-        return jsonify({
-            'code': 200,
-            'message': 'success',
-            'data': {
-                'username': username
-            }
-        })
-    except Exception as e:
-        print(f"获取当前用户信息失败: {e}")
-        return jsonify({'code': 500, 'message': '服务器错误'})
+@app.get('/api/check-login')
+async def check_login(request: Request):
+    if 'user_id' in request.session:
+        return {'code': 200, 'message': 'logged in'}
+    return {'code': 401, 'message': 'not logged in'}
 
 
 # 修改密码接口
-@app.route('/api/change-password', methods=['POST'])
-@login_required
-def change_password():
+@app.post('/api/change-password')
+async def change_password(
+    request: Request,
+    credentials: dict,
+    current_user: str = Depends(get_current_user)
+):
     try:
-        data = request.get_json()
-        old_username = data.get('oldUsername')
-        new_username = data.get('newUsername')
-        old_password = data.get('oldPassword')
-        new_password = data.get('newPassword')
+        old_username = credentials.get('oldUsername')
+        new_username = credentials.get('newUsername')
+        old_password = credentials.get('oldPassword')
+        new_password = credentials.get('newPassword')
 
         if not all([old_username, new_username, old_password, new_password]):
-            return jsonify({'code': 400, 'message': '所有字段都不能为空'})
+            raise HTTPException(status_code=400, detail='所有字段都不能为空')
 
         # 加载用户配置
-        config = load_users()
+        config = await load_users()
 
         # 查找当前用户
-        username = session['user_id']
+        username = current_user
         user = next((user for user in config['users']
                      if user['username'] == username), None)
 
         if not user:
-            return jsonify({'code': 404, 'message': '用户不存在'})
+            raise HTTPException(status_code=404, detail='用户不存在')
 
         # 验证原密码
         if not verify_password(old_password, user['password']):
-            return jsonify({'code': 400, 'message': '原密码错误'})
+            raise HTTPException(status_code=400, detail='原密码错误')
 
         # 如果修改了用户名,确保新用户名不存在
         if old_username != new_username:
@@ -253,81 +270,96 @@ def change_password():
                                 if u['username'] == new_username
                                 and u != user), None)
             if exists_user:
-                return jsonify({'code': 400, 'message': '新用户名已存在'})
+                raise HTTPException(status_code=400, detail='新用户名已存在')
 
         # 更新用户名和密码
         user['username'] = new_username
         user['password'] = hash_password(new_password)
 
         # 保存配置
-        if save_users(config):
+        if await save_users(config):
             # 如果修改了用户名,更新session
             if old_username != new_username:
-                session['user_id'] = new_username
-            return jsonify({'code': 200, 'message': '修改成功'})
+                request.session['user_id'] = new_username
+            return {'code': 200, 'message': '修改成功'}
         else:
-            return jsonify({'code': 500, 'message': '保存配置失败'})
+            raise HTTPException(status_code=500, detail='保存配置失败')
 
+    except HTTPException as e:
+        raise e
     except Exception as e:
-        print(f"修改密码失败: {e}")
-        return jsonify({'code': 500, 'message': '服务器错误'})
+        logger.error(f"修改密码失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # 登出接口
-@app.route('/api/logout')
-def logout():
-    session.clear()
-    return jsonify({'code': 200, 'message': 'success'})
+@app.post('/api/logout')
+async def logout(request: Request):
+    request.session.clear()
+    response = JSONResponse({'code': 200, 'message': 'success'})
+    return response
 
 
 # 保存基础连接配置接口
-@app.route('/api/save-base-config', methods=['POST'])
-@login_required
-def save_base_config():
-    data = request.get_json()
-    base_url = data.get('baseUrl')
-    username = data.get('username')
-    password = data.get('password')
-    config_file_path = os.path.join(STORAGE_DIR, 'base_config.json')
+@app.post('/api/save-base-config')
+async def save_base_config(
+    request: Request,
+    data: dict,
+    current_user: str = Depends(get_current_user)
+):
     try:
-        with open(config_file_path, 'w') as f:
-            json.dump({
-                "baseUrl": base_url,
-                "username": username,
-                "password": password
-            }, f)
-        return jsonify({"code": 200, "message": "基础配置保存成功"})
+        base_url = data.get('baseUrl')
+        username = data.get('username')
+        password = data.get('password')
+        config_file_path = STORAGE_DIR / 'base_config.json'
+
+        config_data = {
+            "baseUrl": base_url,
+            "username": username,
+            "password": password
+        }
+
+        async with aiofiles.open(config_file_path, 'w') as f:
+            await f.write(json.dumps(config_data, indent=2))
+        return {"code": 200, "message": "基础配置保存成功"}
     except Exception as e:
-        return jsonify({"code": 500, "message": f"保存失败: {str(e)}"})
+        raise HTTPException(status_code=500, detail=f"保存失败: {str(e)}")
 
 
 # 查询基础连接配置接口
-@app.route('/api/get-base-config', methods=['GET'])
-@login_required
-def get_base_config():
-    config_file_path = os.path.join(STORAGE_DIR, 'base_config.json')
+@app.get('/api/get-base-config')
+async def get_base_config(
+    request: Request,
+    current_user: str = Depends(get_current_user)
+):
     try:
-        with open(config_file_path, 'r') as f:
-            config_data = json.load(f)
-        return jsonify({"code": 200, "data": config_data})
+        config_file_path = STORAGE_DIR / 'base_config.json'
+
+        async with aiofiles.open(config_file_path, 'r') as f:
+            content = await f.read()
+            config_data = json.loads(content)
+        return {"code": 200, "data": config_data}
     except FileNotFoundError:
-        return jsonify({"code": 404, "message": "配置文件不存在"})
+        raise HTTPException(status_code=404, detail="配置文件不存在")
     except Exception as e:
-        return jsonify({"code": 500, "message": f"读取配置失败: {str(e)}"})
+        raise HTTPException(status_code=500, detail=f"读取配置失败: {str(e)}")
 
 
-@app.route('/api/get-sync-config', methods=['GET'])
-@login_required
-def get_sync_config():
-    config_file_path = os.path.join(STORAGE_DIR, 'sync_config.json')
+@app.get('/api/get-sync-config')
+async def get_sync_config(
+    request: Request,
+    current_user: str = Depends(get_current_user)
+):
+    config_file_path = STORAGE_DIR / 'sync_config.json'
     try:
-        with open(config_file_path, 'r') as f:
-            config_data = json.load(f)
-        return jsonify({"code": 200, "data": config_data})
+        async with aiofiles.open(config_file_path, 'r') as f:
+            content = await f.read()
+            config_data = json.loads(content)
+        return {"code": 200, "data": config_data}
     except FileNotFoundError:
-        return jsonify({"code": 404, "message": "配置文件不存在"})
+        raise HTTPException(status_code=404, detail="配置文件不存在")
     except Exception as e:
-        return jsonify({"code": 500, "message": f"读取配置失败: {str(e)}"})
+        raise HTTPException(status_code=500, detail=f"读取配置失败: {str(e)}")
 
 
 # 定义超时处理函数
@@ -336,12 +368,13 @@ def timeout_handler(signum, frame):
 
 
 # 测试连接接口
-@app.route('/api/test-connection', methods=['POST'])
-@login_required
-def test_connection():
+@app.post('/api/test-connection')
+async def test_connection(
+    request: Request,
+    data: dict,
+    current_user: str = Depends(get_current_user)
+):
     try:
-
-        data = request.get_json()
         base_url = data.get('baseUrl')
         username = data.get('username')
         password = data.get('password')
@@ -350,29 +383,27 @@ def test_connection():
         alist = AlistSync(base_url, username, password)
 
         # 尝试登录
-        if alist.login():
-            return jsonify({"code": 200, "message": "连接测试成功"})
+        if await alist.login():
+            return {"code": 200, "message": "连接测试成功"}
         else:
-            return jsonify({"code": 500, "message": "地址或用户名或密码错误"})
+            raise HTTPException(status_code=500, detail="地址或用户名或密码错误")
 
     except Exception as e:
-        return jsonify({"code": 500, "message": f"连接测试失败: {str(e)}"})
+        raise HTTPException(status_code=500, detail=f"连接测试失败: {str(e)}")
     finally:
         if 'alist' in locals():
-            alist.close()
+            await alist.close()
 
 
 # 添加以下函数来管理定时任务
-def schedule_sync_tasks():
-    """
-    从配置文件读取并调度所有同步任务
-    """
+async def schedule_sync_tasks():
+    """从配置文件读取并调度所有同步任务"""
     try:
         # 清除所有现有的任务
         scheduler.remove_all_jobs()
 
         # 加载同步配置
-        sync_config = load_sync_config()
+        sync_config = await load_sync_config()
         if not sync_config or 'tasks' not in sync_config:
             logger.warning("没有找到有效的同步任务配置")
             return
@@ -385,13 +416,12 @@ def schedule_sync_tasks():
 
             try:
                 job_id = f"sync_task_{task['id']}"
-                # 修改这里，直接传递函数而不是调用结果
                 scheduler.add_job(
-                    func=execute_sync_task,  # 不要加括号调用
+                    func=execute_sync_task,
                     trigger=CronTrigger.from_crontab(task['cron']),
                     id=job_id,
                     replace_existing=True,
-                    args=[task['id']]  # 通过 args 传递参数
+                    args=[task['id']]
                 )
                 logger.info(f"成功调度任务 {task['taskName']}, ID: {job_id}, Cron: {task['cron']}")
             except Exception as e:
@@ -402,61 +432,89 @@ def schedule_sync_tasks():
 
 
 # 修改保存同步配置接口，使其在保存后重新调度任务
-@app.route('/api/save-sync-config', methods=['POST'])
-@login_required
-def save_sync_config():
-    data = request.get_json()
-    sync_config_file_path = os.path.join(STORAGE_DIR, 'sync_config.json')
+@app.post('/api/save-sync-config')
+async def save_sync_config(
+    request: Request,
+    data: dict,
+    current_user: str = Depends(get_current_user)
+):
+    sync_config_file_path = STORAGE_DIR / 'sync_config.json'
     try:
-        with open(sync_config_file_path, 'w') as f:
-            json.dump(data, f)
+        async with aiofiles.open(sync_config_file_path, 'w') as f:
+            await f.write(json.dumps(data, indent=2))
         # 重新调度所有任务    
-        schedule_sync_tasks()
-        return jsonify({"code": 200, "message": "同步配置保存成功并已更新调度"})
+        await schedule_sync_tasks()
+        return {"code": 200, "message": "同步配置保存成功并已更新调度"}
     except Exception as e:
-        return jsonify({"code": 500, "message": f"保存失败: {str(e)}"})
+        raise HTTPException(status_code=500, detail=f"保存失败: {str(e)}")
 
 
-# 假设存储器列表数据也是存储在文件中，这里模拟返回一些示例数据，你可根据实际替换读取逻辑
-@app.route('/api/storages', methods=['GET'])
-@login_required
-def get_storages():
+# 获取存储列表接口
+@app.get('/api/storages')
+async def get_storages(
+    request: Request,
+    current_user: str = Depends(get_current_user)
+):
     try:
-        config = get_base_config()
-        data = config.get_json().get("data")
+        base_config = await load_base_config()
+        if not base_config:
+            raise HTTPException(status_code=400, detail="请先配置基础连接信息")
 
-        # data = request.get_json()
-        base_url = data.get('baseUrl')
-        username = data.get('username')
-        password = data.get('password')
-        # 创建 AlistSync 实例
-        alist = AlistSync(base_url, username, password)
+        alist = AlistSync(
+            base_url=base_config.get('baseUrl'),
+            username=base_config.get('username'),
+            password=base_config.get('password')
+        )
 
-        # 登录并获取存储列表
-        if alist.login():
-            storage_list = alist.get_storage_list()
-            return jsonify({"code": 200, "data": storage_list})
+        if not await alist.login():
+            raise HTTPException(status_code=401, detail="登录失败")
+
+        # 使用 httpx 客户端发送请求
+        response = await alist.client.get(
+            f"{alist.base_url}/api/admin/storage/list",
+            headers={
+                "Authorization": alist.token,
+                "User-Agent": "Apifox/1.0.0 (https://apifox.com)",
+                "Content-Type": "application/json"
+            }
+        )
+        data = response.json()
+        if data.get("code") == 200:
+            content = data.get("data", [])
+            storage_list = content.get("content", [])
+            storages = [item["mount_path"] for item in storage_list]
         else:
-            return jsonify({"code": 500, "message": "获取存储列表失败：登录失败"})
+            raise HTTPException(status_code=500, detail="获取存储列表失败")
+
+        await alist.close()
+
+        return {
+            "code": 200,
+            "data": storages
+        }
     except Exception as e:
-        return jsonify({"code": 500, "message": f"获取存储列表失败: {str(e)}"})
+        logger.error(f"获取存储列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取存储列表失败: {str(e)}")
     finally:
         if 'alist' in locals():
-            alist.close()
+            await alist.close()
 
 
-@app.route('/api/next-run-time', methods=['POST'])
-def next_run_time():
+@app.post('/api/next-run-time')
+async def next_run_time(
+    request: Request,
+    data: dict,
+    current_user: str = Depends(get_current_user)
+):
     # Cron 表达式解析与时间计算
     try:
-        data = request.get_json()
         cron_expression = data.get('cron')
         if not cron_expression:
-            return jsonify({"code": 400, "message": "缺少cron参数"}), 400
+            raise HTTPException(status_code=400, detail="缺少cron参数")
         next_time_list = crontab_run_next_time(cron_expression)
-        return jsonify({"code": 200, "data": next_time_list})
+        return {"code": 200, "data": next_time_list}
     except Exception as e:
-        return jsonify({"code": 500, "message": f"解析出错: {str(e)}"}), 500
+        raise HTTPException(status_code=500, detail=f"解析出错: {str(e)}")
 
 
 def datetime_to_timestamp(timestring, format="%Y-%m-%d %H:%M:%S"):
@@ -537,108 +595,125 @@ def crontab_run_next_time(cron_expression, timeFormat="%Y-%m-%d %H:%M:%S", query
 
 
 # 执行任务接口
-@app.route('/api/run-task', methods=['POST'])
-@login_required
-def run_task():
-    """立即执行同步任务"""
+@app.post('/api/execute-task')
+async def execute_task(
+    request: Request,
+    data: dict,
+    current_user: str = Depends(get_current_user)
+):
     try:
-        if execute_sync_task():
-            return jsonify({"code": 200, "message": "同步任务执行成功"})
+        task_id = data.get('taskId')
+        if not task_id:
+            raise HTTPException(status_code=400, detail="缺少taskId参数")
+
+        # 执行同步任务
+        if execute_sync_task(task_id):
+            return {"code": 200, "message": "任务执行成功"}
         else:
-            return jsonify({"code": 500, "message": "同步任务执行失败"})
+            raise HTTPException(status_code=500, detail="任务执行失败")
     except Exception as e:
-        return jsonify({"code": 500, "message": f"执行任务时发生错误: {str(e)}"})
+        raise HTTPException(status_code=500, detail=f"执行任务失败: {str(e)}")
 
 
-def execute_sync_task(id: int | None = None):
-    """执行同步任务"""
+# 获取任务状态接口
+@app.get('/api/task-status')
+async def get_task_status(
+    request: Request,
+    current_user: str = Depends(get_current_user)
+):
     try:
-        logger.info("开始执行同步任务")
+        jobs = scheduler.get_jobs()
+        status_list = []
+        for job in jobs:
+            next_run = job.next_run_time.strftime('%Y-%m-%d %H:%M:%S') if job.next_run_time else None
+            status_list.append({
+                'id': job.id,
+                'next_run': next_run,
+                'running': job.pending
+            })
+        return {"code": 200, "data": status_list}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取任务状态失败: {str(e)}")
 
-        # 加载同步配置获取任务名称和差异处置策略
-        sync_config = load_sync_config()
-        task_name = "未知任务"
-        sync_del_action = "none"  # 默认值
 
-        if id is not None and sync_config and 'tasks' in sync_config:
-            task = next((t for t in sync_config['tasks'] if t['id'] == id), None)
-            if task:
-                task_name = task.get('taskName', '未知任务')
-                sync_del_action = task.get('syncDelAction', 'none')
+# 获取任务日志接口
+@app.get('/api/task-logs/{task_id}')
+async def get_task_logs(
+    task_id: str,
+    request: Request,
+    current_user: str = Depends(get_current_user)
+):
+    try:
+        # 这里实现获取指定任务的日志逻辑
+        logs = []  # 从日志文件或数据库中获取日志
+        return {"code": 200, "data": logs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取任务日志失败: {str(e)}")
 
-        logger.info(f"任务名称: {task_name}, 差异处置策略: {sync_del_action}")
 
+async def execute_sync_task(id: str = None) -> bool:
+    """执行同步任务"""
+    task_name = "未知任务"
+    try:
         # 加载基础配置
-        base_config = load_base_config()
+        base_config = await load_base_config()
         if not base_config:
             logger.error("基础配置为空，无法执行同步任务")
             return False
-
-        # logger.info(f"已加载基础配置: {base_config}")
+  
         logger.info(f"已加载基础配置")
-
+  
         # 清除可能存在的旧环境变量
         for i in range(1, 51):
             if f'DIR_PAIRS{i}' in os.environ:
                 del os.environ[f'DIR_PAIRS{i}']
         if 'DIR_PAIRS' in os.environ:
             del os.environ['DIR_PAIRS']
-
+  
         # 设置基础环境变量
         os.environ['BASE_URL'] = base_config.get('baseUrl', '')
         os.environ['USERNAME'] = base_config.get('username', '')
         os.environ['PASSWORD'] = base_config.get('password', '')
-
+  
         # 加载同步配置
-        sync_config = load_sync_config()
+        sync_config = await load_sync_config()
         if not sync_config:
             logger.error("同步配置为空，无法执行同步任务")
             return False
-
+  
         # 处理任务列表
         tasks = sync_config.get('tasks', [])
         if not tasks:
             logger.error("没有配置同步任务")
             return False
-
+  
         for task in tasks:
             try:
                 if id is None or id == task['id']:
                     task_name = task.get('taskName', '未知任务')
                     sync_del_action = task.get('syncDelAction', 'none')
                     logger.info(f"[{task_name}] 开始处理任务，差异处置策略: {sync_del_action}")
-
+  
                     # 更新环境变量中的差异处置策略
                     os.environ['SYNC_DELETE_ACTION'] = sync_del_action
-
+  
                     if task['syncMode'] == 'data':
-                        dir_pairs = ''
-                        exclude_dirs = task['excludeDirs']
-                        os.environ['EXCLUDE_DIRS'] = exclude_dirs
-                        # 数据同步模式：一个源存储同步到多个目标存储
-                        syncDirs = task['syncDirs']
-                        source = task['sourceStorage']
-
-                        if source not in exclude_dirs:
-                            exclude_dirs = f'{source}/{exclude_dirs}'
-                        exclude_dirs = exclude_dirs.replace('//', '/')
-
-                        for target in task['targetStorages']:
-                            if source != target:
-                                dir_pair = f"{source}/{syncDirs}:{target}/{syncDirs}"
-                                dir_pair = dir_pair.replace('//', '/')
-                                if f'DIR_PAIRS' in os.environ:
-                                    os.environ['DIR_PAIRS'] += f";{dir_pair}"
-                                else:
-                                    os.environ['DIR_PAIRS'] = dir_pair
-
-                                if dir_pairs != '':
-                                    dir_pairs += f";{dir_pair}"
-                                else:
-                                    dir_pairs = dir_pair
-                                logger.info(f"[{task_name}] 添加同步目录对: {dir_pair}")
-                        # 调用 alist_sync 的 main 函数
-                        alist_sync.main(dir_pairs, sync_del_action, exclude_dirs)
+                        # 数据同步模式：一个源路径同步到多个目标路径
+                        src_path = task['sourceStorage']
+                        dst_paths = task['targetStorages']
+                        sync_dirs = task['syncDirs']
+                        exclude_dirs = task.get('excludeDirs', '')
+  
+                        # 构建同步目录对
+                        dir_pairs = []
+                        for dst_path in dst_paths:
+                            src_dir = f"{src_path}/{sync_dirs}".replace('//', '/')
+                            dst_dir = f"{dst_path}/{sync_dirs}".replace('//', '/')
+                            dir_pairs.append(f"{src_dir}:{dst_dir}")
+  
+                        # 调用同步函数
+                        await alist_sync.main(";".join(dir_pairs), sync_del_action, exclude_dirs)
+  
                     elif task['syncMode'] == 'file':
                         dir_pairs = ''
                         exclude_dirs = task['excludeDirs']
@@ -651,47 +726,47 @@ def execute_sync_task(id: int | None = None):
                                 os.environ['DIR_PAIRS'] += f";{dir_pair}"
                             else:
                                 os.environ['DIR_PAIRS'] = dir_pair
-
+  
                             if dir_pairs != '':
                                 dir_pairs += f";{dir_pair}"
                             else:
                                 dir_pairs = dir_pair
-
+  
                             logger.info(f"[{task_name}] 添加同步目录对: {dir_pair}")
-                        alist_sync.main(dir_pairs, sync_del_action, exclude_dirs)
-
+                        await alist_sync.main(dir_pairs, sync_del_action, exclude_dirs)
+  
             except KeyError as e:
                 logger.error(f"[{task_name}] 任务配置错误: {e}")
                 continue
-
+  
         # 检查是否有有效的同步目录对
         if 'DIR_PAIRS' not in os.environ or not os.environ['DIR_PAIRS']:
             logger.error("没有有效的同步目录对")
             return False
-
+  
         logger.info(f"[{task_name}] 开始执行同步任务，同步目录对: {os.environ['DIR_PAIRS']}")
-
+  
         # 调用 alist_sync 的 main 函数
-        alist_sync.main()
+        await alist_sync.main()
         logger.info(f"[{task_name}] 同步任务执行完成")
         return True
-
+  
     except Exception as e:
         logger.error(f"[{task_name}] 执行同步任务失败: {str(e)}")
         return False
 
 
-def load_base_config() -> dict:
+async def load_base_config() -> dict:
     """加载基础配置"""
     try:
-        config_file_path = os.path.join(STORAGE_DIR, 'base_config.json')
-        if not os.path.exists(config_file_path):
+        config_file_path = STORAGE_DIR / 'base_config.json'
+        if not config_file_path.exists():
             logger.warning(f"基础配置文件不存在: {config_file_path}")
             return {}
 
-        with open(config_file_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
-            # logger.info(f"成功加载基础配置: {config}")
+        async with aiofiles.open(config_file_path, 'r', encoding='utf-8') as f:
+            content = await f.read()
+            config = json.loads(content)
             logger.info(f"成功加载基础配置")
             return config
     except Exception as e:
@@ -699,16 +774,17 @@ def load_base_config() -> dict:
         return {}
 
 
-def load_sync_config() -> dict:
+async def load_sync_config() -> dict:
     """加载同步配置"""
     try:
-        sync_config_file_path = os.path.join(STORAGE_DIR, 'sync_config.json')
-        if not os.path.exists(sync_config_file_path):
+        sync_config_file_path = STORAGE_DIR / 'sync_config.json'
+        if not sync_config_file_path.exists():
             logger.warning(f"同步配置文件不存在: {sync_config_file_path}")
             return {"tasks": []}
 
-        with open(sync_config_file_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
+        async with aiofiles.open(sync_config_file_path, 'r', encoding='utf-8') as f:
+            content = await f.read()
+            config = json.loads(content)
             logger.info(f"成功加载同步配置: {config}")
             return config
     except Exception as e:
@@ -717,13 +793,47 @@ def load_sync_config() -> dict:
 
 
 # 在 if __name__ == '__main__': 之前添加初始化调度的代码
-def init_scheduler():
-    """
-    初始化调度器并加载现有任务
-    """
+async def init_scheduler():
+    """初始化调度器"""
     try:
-        schedule_sync_tasks()
-        logger.info("调度器初始化完成")
+        # 加载同步配置
+        sync_config = await load_sync_config()
+        if not sync_config or 'tasks' not in sync_config:
+            logger.warning("没有找到有效的同步任务配置")
+            return
+
+        # 清除现有的任务
+        schedule.clear()
+
+        # 为每个任务创建调度
+        for task in sync_config['tasks']:
+            if 'cron' not in task:
+                continue
+                
+            # 解析cron表达式并设置对应的schedule
+            cron = task['cron'].split()
+            if len(cron) == 5:
+                minute, hour, day, month, day_of_week = cron
+                
+                # 设置定时任务
+                if minute != '*':
+                    schedule.every().minute.at(f":{minute}").do(
+                        lambda: asyncio.create_task(execute_sync_task(task['id']))
+                    )
+                if hour != '*':
+                    schedule.every().hour.at(f":{minute}").do(
+                        lambda: asyncio.create_task(execute_sync_task(task['id']))
+                    )
+  
+        # 启动调度器线程
+        def run_async_scheduler():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(run_scheduler())
+        
+        scheduler_thread = Thread(target=run_async_scheduler, daemon=True)
+        scheduler_thread.start()
+        
     except Exception as e:
         logger.error(f"初始化调度器失败: {str(e)}")
 
@@ -774,46 +884,104 @@ logger = setup_logger()
 
 
 # 添加获取日志的接口
-@app.route('/api/logs', methods=['GET'])
-@login_required
-def get_logs():
+@app.get('/api/logs')
+async def get_logs(
+    request: Request,
+    date: str = None,
+    current_user: str = Depends(get_current_user)
+):
     try:
-        # 获取请求参数中的日期
-        date_str = request.args.get('date')
+        date_str = date
 
         # 构建日志文件路径
-        log_dir = os.path.join(app.root_path,'data/log')
+        log_dir = Path(app.root_path) / 'data' / 'log'
 
         # 如果是请求当前日志或没有指定日期
         if not date_str or date_str == 'current':
-            log_file = os.path.join(log_dir, 'alist_sync.log')
+            log_file = log_dir / 'alist_sync.log'
             date_str = 'current'
         else:
             # 历史日志文件
-            log_file = os.path.join(log_dir, f'alist_sync.log.{date_str}')
+            log_file = log_dir / f'alist_sync.log.{date_str}'
 
         logs = []
-        if os.path.exists(log_file):
-            with open(log_file, 'r', encoding='utf-8') as f:
-                content = f.read()
+        if log_file.exists():
+            async with aiofiles.open(log_file, 'r', encoding='utf-8') as f:
+                content = await f.read()
             logs.append({
                 'date': date_str,
                 'content': content
             })
 
-        return jsonify({
+        return {
             'code': 200,
             'data': logs
-        })
+        }
 
     except Exception as e:
         logger.error(f"获取日志失败: {str(e)}")
-        return jsonify({
-            'code': 500,
-            'message': f"获取日志失败: {str(e)}"
-        })
+        raise HTTPException(status_code=500, detail=f"获取日志失败: {str(e)}")
+
+
+async def run_scheduler():
+    while True:
+        # 获取所有待执行的任务
+        jobs = schedule.get_jobs()
+        for job in jobs:
+            if job.should_run:
+                try:
+                    # 异步执行任务
+                    if hasattr(job, 'job_func'):
+                        if asyncio.iscoroutinefunction(job.job_func):
+                            await job.job_func()
+                        else:
+                            job.job_func()
+                    job.last_run = datetime.datetime.now()
+                    job._schedule_next_run()
+                except Exception as e:
+                    logger.error(f"执行调度任务失败: {str(e)}")
+        await asyncio.sleep(1)
+
+def init_config_files():
+    """初始化配置文件"""
+    try:
+        # 确保配置目录存在
+        STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+        
+        # 初始化同步配置文件
+        sync_config_file = STORAGE_DIR / 'sync_config.json'
+        if not sync_config_file.exists():
+            default_sync_config = {
+                "tasks": []
+            }
+            sync_config_file.write_text(json.dumps(default_sync_config, indent=2))
+            logger.info("创建默认同步配置文件")
+            
+        # 初始化基础配置文件
+        base_config_file = STORAGE_DIR / 'base_config.json'
+        if not base_config_file.exists():
+            default_base_config = {
+                "baseUrl": "",
+                "username": "",
+                "password": ""
+            }
+            base_config_file.write_text(json.dumps(default_base_config, indent=2))
+            logger.info("创建默认基础配置文件")
+            
+    except Exception as e:
+        logger.error(f"初始化配置文件失败: {e}")
 
 
 if __name__ == '__main__':
-    init_scheduler()
-    app.run(host='0.0.0.0', port=52441, debug=False)
+    init_config_files()
+    # 创建事件循环来运行异步初始化
+    import asyncio
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(init_scheduler())
+    uvicorn.run(
+        "alist-sync-web:app",
+        host="0.0.0.0",
+        port=52441,
+        reload=False,
+        workers=1
+    )

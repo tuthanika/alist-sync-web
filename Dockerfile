@@ -46,4 +46,4 @@ COPY . .
 EXPOSE 52441
 
 # 启动命令
-CMD ["python", "alist-sync-web.py"] 
+CMD ["uvicorn", "alist-sync-web:app", "--host", "0.0.0.0", "--port", "52441"] 

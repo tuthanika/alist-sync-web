@@ -6,22 +6,23 @@ import os
 import logging
 from typing import List, Dict, Optional, Union
 from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
+import httpx
 
 
 def setup_logger():
     """配置日志记录器"""
-    # 获取当前文件所在目录
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    # 创建日志目录
-    log_dir = os.path.join(current_dir, 'data/log')
-    os.makedirs(log_dir, exist_ok=True)
+    # 使用 pathlib 处理路径
+    current_dir = Path(__file__).parent
+    log_dir = current_dir / 'data' / 'log'
+    log_dir.mkdir(parents=True, exist_ok=True)
 
-    # 设置日志文件路径
-    log_file = os.path.join(log_dir, 'alist_sync.log')
+    # 使用 pathlib 处理日志文件路径
+    log_file = log_dir / 'alist_sync.log'
 
     # 创建 TimedRotatingFileHandler
     file_handler = TimedRotatingFileHandler(
-        filename=log_file,
+        filename=str(log_file),
         when='midnight',
         interval=1,
         backupCount=7,
@@ -86,60 +87,29 @@ class AlistSync:
         self.password = password
         self.sync_delete_action = sync_delete_action.lower()
         self.sync_delete = self.sync_delete_action in ["move", "delete"]
-        self.connection = self._create_connection()
+        self.client = httpx.AsyncClient(verify=False)  # 创建异步客户端
         self.token = None
 
-    def _create_connection(self) -> Union[http.client.HTTPConnection, http.client.HTTPSConnection]:
-        """创建HTTP(S)连接"""
+    async def login(self) -> bool:
+        """异步登录"""
         try:
-            match = re.match(r"(?:http[s]?://)?([^:/]+)(?::(\d+))?", self.base_url)
-            if not match:
-                raise ValueError("Invalid base URL format")
-
-            host = match.group(1)
-            port_part = match.group(2)
-            port = int(port_part) if port_part else (443 if self.base_url.startswith("https://") else 80)
-
-            logger.info(f"创建连接 - 主机: {host}, 端口: {port}")
-            return (http.client.HTTPSConnection(host, port)
-                    if self.base_url.startswith("https://")
-                    else http.client.HTTPConnection(host, port))
+            response = await self.client.post(
+                f"{self.base_url}/api/auth/login",
+                json={"username": self.username, "password": self.password}
+            )
+            data = response.json()
+            if data.get("code") == 200:
+                self.token = data["data"]["token"]
+                return True
+            return False
         except Exception as e:
-            logger.error(f"创建连接失败: {str(e)}")
-            raise
+            logger.error(f"登录失败: {e}")
+            return False
 
-    def _make_request(self, method: str, path: str, headers: Dict = None,
-                      payload: str = None) -> Optional[Dict]:
-        """发送HTTP请求并返回JSON响应"""
-        try:
-            logger.debug(f"发送请求 - 方法: {method}, 路径: {path}")
-            self.connection.request(method, path, body=payload, headers=headers)
-            response = self.connection.getresponse()
-            result = json.loads(response.read().decode("utf-8"))
-            logger.debug(f"请求响应: {result}")
-            return result
-        except Exception as e:
-            logger.error(f"请求失败 - 方法: {method}, 路径: {path}, 错误: {str(e)}")
-            return None
-
-    def login(self) -> bool:
-        """登录并获取token"""
-        payload = json.dumps({"username": self.username, "password": self.password})
-        headers = {
-            "User-Agent": "Apifox/1.0.0 (https://apifox.com)",
-            "Content-Type": "application/json"
-        }
-        response = self._make_request("POST", "/api/auth/login", headers, payload)
-        if response and response.get("data", {}).get("token"):
-            self.token = response["data"]["token"]
-            return True
-        logger.error("获取token失败")
-        return False
-
-    def _directory_operation(self, operation: str, **kwargs) -> Optional[Dict]:
+    async def _directory_operation(self, operation: str, **kwargs) -> Optional[Dict]:
         """执行目录操作"""
         if not self.token:
-            if not self.login():
+            if not await self.login():
                 return None
 
         headers = {
@@ -147,27 +117,35 @@ class AlistSync:
             "User-Agent": "Apifox/1.0.0 (https://apifox.com)",
             "Content-Type": "application/json"
         }
-        payload = json.dumps(kwargs)
         path = f"/api/fs/{operation}"
-        return self._make_request("POST", path, headers, payload)
+        try:
+            response = await self.client.post(
+                f"{self.base_url}{path}",
+                headers=headers,
+                json=kwargs
+            )
+            return response.json()
+        except Exception as e:
+            logger.error(f"请求失败 - 方法: POST, 路径: {path}, 错误: {str(e)}")
+            return None
 
-    def get_directory_contents(self, directory_path: str) -> List[Dict]:
+    async def get_directory_contents(self, directory_path: str) -> List[Dict]:
         """获取目录内容"""
-        response = self._directory_operation("list", path=directory_path)
+        response = await self._directory_operation("list", path=directory_path)
         return response.get("data", {}).get("content", []) if response else []
 
-    def create_directory(self, directory_path: str) -> bool:
+    async def create_directory(self, directory_path: str) -> bool:
         """创建目录"""
-        response = self._directory_operation("mkdir", path=directory_path)
+        response = await self._directory_operation("mkdir", path=directory_path)
         if response:
             logger.info(f"文件夹【{directory_path}】创建成功")
             return True
         logger.error("文件夹创建失败")
         return False
 
-    def copy_item(self, src_dir: str, dst_dir: str, item_name: str) -> bool:
+    async def copy_item(self, src_dir: str, dst_dir: str, item_name: str) -> bool:
         """复制文件或目录"""
-        response = self._directory_operation("copy",
+        response = await self._directory_operation("copy",
                                              src_dir=src_dir,
                                              dst_dir=dst_dir,
                                              names=[item_name])
@@ -177,27 +155,27 @@ class AlistSync:
         logger.error("文件复制失败")
         return False
 
-    def move_item(self, src_dir: str, dst_dir: str, item_name: str) -> bool:
+    async def move_item(self, src_dir: str, dst_dir: str, item_name: str) -> bool:
         """移动文件或目录"""
-        response = self._directory_operation("move",
+        response = await self._directory_operation("move",
                                              src_dir=src_dir,
                                              dst_dir=dst_dir,
                                              names=[item_name])
         if response:
-            logger.info(f"文件从【{src_dir}/{item_name}】移动到【{dst_dir}/{item_name}】移动成功")
+            logger.info(f"文件【{item_name}】移动成功")
             return True
         logger.error("文件移动失败")
         return False
 
-    def is_path_exists(self, path: str) -> bool:
+    async def is_path_exists(self, path: str) -> bool:
         """检查路径是否存在"""
-        response = self._directory_operation("get", path=path)
+        response = await self._directory_operation("get", path=path)
         return bool(response and response.get("message") == "success")
 
-    def get_storage_list(self) -> List[str]:
+    async def get_storage_list(self) -> List[str]:
         """获取存储列表"""
         if not self.token:
-            if not self.login():
+            if not await self.login():
                 return []
 
         headers = {
@@ -205,29 +183,35 @@ class AlistSync:
             "User-Agent": "Apifox/1.0.0 (https://apifox.com)",
             "Content-Type": "application/json"
         }
-        response = self._make_request("GET", "/api/admin/storage/list", headers)
-        if response:
-            storage_list = response["data"]["content"]
-            return [item["mount_path"] for item in storage_list]
-        logger.error("获取存储列表失败")
+        try:
+            response = await self.client.get(
+                f"{self.base_url}/api/admin/storage/list",
+                headers=headers
+            )
+            data = response.json()
+            if data.get("code") == 200:
+                storage_list = data["data"]["content"]
+                return [item["mount_path"] for item in storage_list]
+        except Exception as e:
+            logger.error(f"获取存储列表失败: {e}")
         return []
 
-    def sync_directories(self, src_dir: str, dst_dir: str, exclude_dirs: str = None) -> bool:
+    async def sync_directories(self, src_dir: str, dst_dir: str, exclude_dirs: str = None) -> bool:
         """同步两个目录"""
         try:
             logger.info(f"开始同步目录 - 源目录: {src_dir}, 目标目录: {dst_dir}")
-            if not self.is_path_exists(dst_dir):
+            if not await self.is_path_exists(dst_dir):
                 logger.info(f"目标目录不存在，创建目录: {dst_dir}")
-                if not self.create_directory(dst_dir):
+                if not await self.create_directory(dst_dir):
                     return False
-            result = self._recursive_copy(src_dir, dst_dir, exclude_dirs)
+            result = await self._recursive_copy(src_dir, dst_dir, exclude_dirs)
             logger.info(f"目录同步完成 - 源目录: {src_dir}, 目标目录: {dst_dir}, 结果: {'成功' if result else '失败'}")
             return result
         except Exception as e:
             logger.error(f"同步目录失败: {str(e)}")
             return False
 
-    def _recursive_copy(self, src_dir: str, dst_dir: str, exclude_dirs: str = None) -> bool:
+    async def _recursive_copy(self, src_dir: str, dst_dir: str, exclude_dirs: str = None) -> bool:
         """递归复制目录内容"""
         try:
             if src_dir == exclude_dirs:
@@ -235,16 +219,16 @@ class AlistSync:
                 return True
             else:
                 logger.info(f"开始递归复制 - 源目录: {src_dir}, 目标目录: {dst_dir}")
-                src_contents = self.get_directory_contents(src_dir)
+                src_contents = await self.get_directory_contents(src_dir)
                 if not src_contents:
                     logger.info(f"源目录为空或获取内容失败: {src_dir}")
                     return True
 
                 if self.sync_delete:
-                    self._handle_sync_delete(src_dir, dst_dir, src_contents)
+                    await self._handle_sync_delete(src_dir, dst_dir, src_contents)
 
                 for item in src_contents:
-                    if not self._copy_item_with_check(src_dir, dst_dir, item, exclude_dirs):
+                    if not await self._copy_item_with_check(src_dir, dst_dir, item, exclude_dirs):
                         logger.error(f"复制项目失败: {item.get('name', '未知项目')}")
                         return False
 
@@ -254,10 +238,10 @@ class AlistSync:
             logger.error(f"递归复制失败: {str(e)}")
         return False
 
-    def _handle_sync_delete(self, src_dir: str, dst_dir: str, src_contents: List[Dict]):
+    async def _handle_sync_delete(self, src_dir: str, dst_dir: str, src_contents: List[Dict]):
         """处理同步删除逻辑"""
         try:
-            dst_contents = self.get_directory_contents(dst_dir)
+            dst_contents = await self.get_directory_contents(dst_dir)
             src_names = {item["name"] for item in src_contents}
             dst_names = {item["name"] for item in dst_contents}
 
@@ -270,46 +254,42 @@ class AlistSync:
                 if self.sync_delete_action == "move":
                     logger.info(f"处理同步移动 - 目录: {dst_dir}")
                     logger.info(f"处理移动项目: {name}")
-                    trash_dir = self._get_trash_dir(dst_dir)
+                    trash_dir = await self._get_trash_dir(dst_dir)
                     if trash_dir:
-                        if not self.is_path_exists(trash_dir):
+                        if not await self.is_path_exists(trash_dir):
                             logger.info(f"创建回收站目录: {trash_dir}")
-                            self.create_directory(trash_dir)
+                            await self.create_directory(trash_dir)
                         logger.info(f"移动到回收站: {name}")
-                        self.move_item(dst_dir, trash_dir, name)
+                        await self.move_item(dst_dir, trash_dir, name)
                 else:  # delete
                     logger.info(f"处理同步删除 - 目录: {dst_dir}")
                     logger.info(f"处理删除项目: {name}")
                     logger.info(f"直接删除项目: {name}")
-                    self._directory_operation("remove", dir=dst_dir, names=[name])
+                    await self._directory_operation("remove", dir=dst_dir, names=[name])
         except Exception as e:
             logger.error(f"处理同步删除失败: {str(e)}")
 
-    def _get_trash_dir(self, dst_dir: str) -> Optional[str]:
+    async def _get_trash_dir(self, dst_dir: str) -> Optional[str]:
         """获取回收站目录路径"""
-        storage_list = self.get_storage_list()
+        storage_list = await self.get_storage_list()
         for mount_path in storage_list:
             if dst_dir.startswith(mount_path):
                 return f"{mount_path}/trash{dst_dir[len(mount_path):]}"
         return None
 
-    def close(self):
-        """关闭连接"""
-        try:
-            if hasattr(self, 'connection') and self.connection:
-                self.connection.close()
-                logger.debug("连接已关闭")
-        except Exception as e:
-            logger.error(f"关闭连接时发生错误: {str(e)}")
+    async def close(self):
+        """关闭客户端"""
+        if self.client:
+            await self.client.aclose()
 
-    def get_file_info(self, path: str) -> Optional[Dict]:
+    async def get_file_info(self, path: str) -> Optional[Dict]:
         """获取文件信息，包括大小和修改时间"""
-        response = self._directory_operation("get", path=path)
+        response = await self._directory_operation("get", path=path)
         if response and response.get("message") == "success":
             return response.get("data", {})
         return None
 
-    def _copy_item_with_check(self, src_dir: str, dst_dir: str, item: Dict, exclude_dirs: str = None) -> bool:
+    async def _copy_item_with_check(self, src_dir: str, dst_dir: str, item: Dict, exclude_dirs: str = None) -> bool:
         """复制项目并进行检查"""
         try:
             item_name = item.get('name')
@@ -328,27 +308,27 @@ class AlistSync:
                 dst_subdir = f"{dst_dir}/{item_name}".replace('//', '/')
 
                 # 确保目标子目录存在
-                if not self.is_path_exists(dst_subdir):
+                if not await self.is_path_exists(dst_subdir):
                     logger.info(f"创建目标子目录: {dst_subdir}")
-                    if not self.create_directory(dst_subdir):
+                    if not await self.create_directory(dst_subdir):
                         return False
                 else:
                     logger.info(f"文件夹【{dst_subdir}】已存在，跳过创建")
 
                 # 递归复制子目录
-                return self._recursive_copy(src_subdir, dst_subdir, exclude_dirs)
+                return await self._recursive_copy(src_subdir, dst_subdir, exclude_dirs)
             else:
                 # 处理文件
                 dst_path = f"{dst_dir}/{item_name}".replace('//', '/')
 
                 # 检查目标文件是否存在
-                if not self.is_path_exists(dst_path):
+                if not await self.is_path_exists(dst_path):
                     logger.info(f"复制文件: {item_name}")
-                    return self.copy_item(src_dir, dst_dir, item_name)
+                    return await self.copy_item(src_dir, dst_dir, item_name)
                 else:
                     # 获取源文件和目标文件信息
                     src_size = item.get("size")
-                    dst_info = self.get_file_info(dst_path)
+                    dst_info = await self.get_file_info(dst_path)
 
                     if not dst_info:
                         logger.error(f"获取目标文件信息失败: {dst_path}")
@@ -371,11 +351,11 @@ class AlistSync:
                         else:
                             logger.info(f"文件【{item_name}】存在变更，删除并重新复制")
                             # 删除旧文件
-                            if not self._directory_operation("remove", dir=dst_dir, names=[item_name]):
+                            if not await self._directory_operation("remove", dir=dst_dir, names=[item_name]):
                                 logger.error(f"删除目标文件失败: {dst_path}")
                                 return False
                             # 复制新文件
-                            return self.copy_item(src_dir, dst_dir, item_name)
+                            return await self.copy_item(src_dir, dst_dir, item_name)
 
         except Exception as e:
             logger.error(f"复制项目时发生错误: {str(e)}")
@@ -398,7 +378,7 @@ def get_dir_pairs_from_env() -> List[str]:
     return dir_pairs_list
 
 
-def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str = None):
+async def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str = None):
     """主函数，用于命令行执行"""
     code_souce()
     xiaojin()
@@ -454,13 +434,13 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
             logger.info(f"")
             logger.info(f"")
             i += 1
-            alist_sync.sync_directories(src_dir.strip(), dst_dir.strip(), exclude_dirs)
+            await alist_sync.sync_directories(src_dir.strip(), dst_dir.strip(), exclude_dirs)
 
         logger.info("所有同步任务执行完成")
     except Exception as e:
         logger.error(f"执行同步任务时发生错误: {str(e)}")
     finally:
-        alist_sync.close()
+        await alist_sync.close()
         logger.info("关闭连接，任务结束")
 
 
@@ -506,4 +486,13 @@ def xiaojin():
 
 
 if __name__ == '__main__':
-    main()
+    import asyncio
+    
+    # 获取事件循环
+    loop = asyncio.get_event_loop()
+    
+    # 运行主函数
+    try:
+        loop.run_until_complete(main())
+    finally:
+        loop.close()

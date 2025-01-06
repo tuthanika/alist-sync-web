@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Alist-Sync 登录</title>
-  <link rel="icon" href="../static/images/favicon.ico" type="image/x-icon">
-  <link href="../static/layui/css/layui.css" rel="stylesheet">
+  <link rel="icon" href="{{ url_for('static', path='images/favicon.ico') }}" type="image/x-icon">
+  <link href="https://cdn.staticfile.org/layui/2.8.18/css/layui.css" rel="stylesheet">
   <style>
     .login-container {
       width: 100%;
@@ -36,7 +36,7 @@
   <div class="login-container">
     <div class="login-box">
       <div class="login-header">
-        <img src="../static/images/logo.png" alt="Alist-Sync" style="width: 64px; height: 64px; margin-bottom: 10px;">
+        <img src="{{ url_for('static', path='images/logo.png') }}" alt="Alist-Sync" style="width: 64px; height: 64px; margin-bottom: 10px;">
         <h2>Alist-Sync 登录</h2>
       </div>
       <form class="layui-form" action="javascript:void(0);">
@@ -61,7 +61,7 @@
     </div>
   </div>
 
-  <script src="../static/layui/layui.js"></script>
+  <script src="https://cdn.staticfile.org/layui/2.8.18/layui.js"></script>
   <script>
   layui.use(['form', 'layer'], function(){
     var form = layui.form
@@ -78,7 +78,7 @@
         data: JSON.stringify(data.field),
         success: function(res){
           layer.closeAll('loading');
-          if(res.code === 200){
+          if(res.code === 200 || res.status === 200){
             layer.msg('登录成功', {
               icon: 1,
               time: 1000
@@ -86,12 +86,17 @@
               window.location.href = '/'; // 登录成功后跳转到首页
             });
           } else {
-            layer.msg(res.message || '登录失败');
+            layer.msg(res.detail || res.message || '登录失败');
           }
         },
-        error: function(){
+        error: function(xhr){
           layer.closeAll('loading');
-          layer.msg('请求失败');
+          try {
+            var res = JSON.parse(xhr.responseText);
+            layer.msg(res.detail || '请求失败');
+          } catch(e) {
+            layer.msg('请求失败');
+          }
         }
       });
       return false;
