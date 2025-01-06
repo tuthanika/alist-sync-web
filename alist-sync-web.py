@@ -18,7 +18,9 @@ from apscheduler.triggers.cron import CronTrigger
 from logging.handlers import TimedRotatingFileHandler
 import glob
 
-from passlib.hash import sha256_crypt
+import hashlib
+import secrets
+import base64
 
 # 创建一个全局的调度器
 scheduler = BackgroundScheduler()
@@ -65,13 +67,49 @@ USER_CONFIG_FILE = os.path.join(os.path.dirname(__file__), STORAGE_DIR, 'users_c
 # 确保配置目录存在
 os.makedirs(os.path.dirname(USER_CONFIG_FILE), exist_ok=True)
 
+
+# 添加密码加密和验证函数
+def hash_password(password: str) -> str:
+    """
+    使用 SHA-256 加盐加密密码
+    返回格式: base64(salt):base64(hash)
+    """
+    salt = secrets.token_bytes(16)  # 生成16字节的随机盐值
+    h = hashlib.sha256()
+    h.update(salt)
+    h.update(password.encode('utf-8'))
+    hash_value = h.digest()
+    # 将盐值和哈希值用base64编码并用冒号连接
+    return f"{base64.b64encode(salt).decode()}:{base64.b64encode(hash_value).decode()}"
+
+
+def verify_password(password: str, hash_str: str) -> bool:
+    """验证密码是否正确"""
+    try:
+        # 分离盐值和哈希值
+        salt_b64, hash_b64 = hash_str.split(':')
+        salt = base64.b64decode(salt_b64)
+        stored_hash = base64.b64decode(hash_b64)
+
+        # 使用相同的盐值重新计算哈希
+        h = hashlib.sha256()
+        h.update(salt)
+        h.update(password.encode('utf-8'))
+        calculated_hash = h.digest()
+
+        # 比较哈希值
+        return secrets.compare_digest(calculated_hash, stored_hash)
+    except Exception:
+        return False
+
+
 # 如果用户配置文件不存在,创建默认配置
 if not os.path.exists(USER_CONFIG_FILE):
     default_config = {
         "users": [
             {
                 "username": "admin",
-                "password": sha256_crypt.hash("admin")
+                "password": hash_password("admin")
             }
         ]
     }
@@ -143,7 +181,7 @@ def api_login():
         user = next((user for user in config['users']
                      if user['username'] == username), None)
 
-        if user and sha256_crypt.verify(password, user['password']):
+        if user and verify_password(password, user['password']):
             session['user_id'] = username
             return jsonify({'code': 200, 'message': '登录成功'})
         else:
@@ -206,7 +244,7 @@ def change_password():
             return jsonify({'code': 404, 'message': '用户不存在'})
 
         # 验证原密码
-        if not sha256_crypt.verify(old_password, user['password']):
+        if not verify_password(old_password, user['password']):
             return jsonify({'code': 400, 'message': '原密码错误'})
 
         # 如果修改了用户名,确保新用户名不存在
@@ -219,7 +257,7 @@ def change_password():
 
         # 更新用户名和密码
         user['username'] = new_username
-        user['password'] = sha256_crypt.hash(new_password)
+        user['password'] = hash_password(new_password)
 
         # 保存配置
         if save_users(config):
