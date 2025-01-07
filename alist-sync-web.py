@@ -66,7 +66,7 @@ if not os.path.exists(STORAGE_DIR):
     os.makedirs(STORAGE_DIR)
 
 # 用户配置文件路径
-USER_CONFIG_FILE = os.path.join(os.path.dirname(__file__), STORAGE_DIR, 'users_config.json')
+USER_CONFIG_FILE = os.path.join(os.path.dirname(__file__), STORAGE_DIR, 'alist_sync_users_config.json')
 
 # 确保配置目录存在
 os.makedirs(os.path.dirname(USER_CONFIG_FILE), exist_ok=True)
@@ -322,7 +322,7 @@ def logout():
 @login_required
 def save_base_config():
     data = request.get_json()
-    if config_manager.save('base_config', data):
+    if config_manager.save('alist_sync_base_config', data):
         return jsonify({"code": 200, "message": "基础配置保存成功"})
     return jsonify({"code": 500, "message": "保存失败"})
 
@@ -331,7 +331,7 @@ def save_base_config():
 @app.route('/api/get-base-config', methods=['GET'])
 @login_required
 def get_base_config():
-    config = config_manager.load('base_config')
+    config = config_manager.load('alist_sync_base_config')
     if config:
         return jsonify({"code": 200, "data": config})
     return jsonify({"code": 404, "message": "配置文件不存在"})
@@ -340,7 +340,7 @@ def get_base_config():
 @app.route('/api/get-sync-config', methods=['GET'])
 @login_required
 def get_sync_config():
-    config = config_manager.load('sync_config')
+    config = config_manager.load('alist_sync_sync_config')
     if config:
         return jsonify({"code": 200, "data": config})
     return jsonify({"code": 404, "message": "配置文件不存在"})
@@ -423,8 +423,8 @@ class TaskManager:
             logger.info("开始执行同步任务")
 
             # 加载配置
-            sync_config = self.config_manager.load('sync_config')
-            base_config = self.config_manager.load('base_config')
+            sync_config = self.config_manager.load('alist_sync_sync_config')
+            base_config = self.config_manager.load('alist_sync_base_config')
 
             if not sync_config or not base_config:
                 logger.error("配置为空，无法执行同步任务")
@@ -517,7 +517,7 @@ task_manager = TaskManager(config_manager)
 @login_required
 def save_sync_config():
     data = request.get_json()
-    if config_manager.save('sync_config', data):
+    if config_manager.save('alist_sync_sync_config', data):
         schedule_sync_tasks()
         return jsonify({"code": 200, "message": "同步配置保存成功并已更新调度"})
     return jsonify({"code": 500, "message": "保存失败"})
@@ -541,7 +541,7 @@ def run_task():
 @login_required
 def get_storages():
     try:
-        config = config_manager.load('base_config')  # 使用 config_manager 替代 load_config
+        config = config_manager.load('alist_sync_base_config')  # 使用 config_manager 替代 load_config
         if not config:
             return jsonify({"code": 404, "message": "基础配置不存在"})
 
@@ -629,7 +629,7 @@ class SchedulerManager:
         """重新加载所有任务"""
         try:
             self.scheduler.remove_all_jobs()
-            sync_config = self.config_manager.load('sync_config')
+            sync_config = self.config_manager.load('alist_sync_sync_config')
 
             if not sync_config or 'tasks' not in sync_config:
                 logger.warning("没有找到有效的同步任务配置")
@@ -678,7 +678,7 @@ def next_run_time():
         if not cron_expr:
             task_id = data.get('id')
             if task_id is not None:
-                sync_config = config_manager.load('sync_config')
+                sync_config = config_manager.load('alist_sync_sync_config')
                 if sync_config and 'tasks' in sync_config:
                     task = next((t for t in sync_config['tasks'] if t['id'] == task_id), None)
                     if task and 'cron' in task:
@@ -749,11 +749,11 @@ def export_config():
 
         # 根据类型确定源文件和目标文件
         if config_type == 'sync':
-            src_file = os.path.join(STORAGE_DIR, 'sync_config.json')
-            dst_file = f'sync_config_{timestamp}.json'
+            src_file = os.path.join(STORAGE_DIR, 'alist_sync_sync_config.json')
+            dst_file = f'alist_sync_sync_config_{timestamp}.json'
         elif config_type == 'base':
-            src_file = os.path.join(STORAGE_DIR, 'base_config.json')
-            dst_file = f'base_config_{timestamp}.json'
+            src_file = os.path.join(STORAGE_DIR, 'alist_sync_base_config.json')
+            dst_file = f'alist_sync_base_config_{timestamp}.json'
         else:
             return jsonify({'code': 400, 'message': '无效的配置类型'})
 
@@ -790,15 +790,15 @@ def import_config():
             return jsonify({'code': 400, 'message': '请提供配置类型和内容'})
 
         # 检查基础配置文件是否存在
-        base_config_file = os.path.join(STORAGE_DIR, 'base_config.json')
+        base_config_file = os.path.join(STORAGE_DIR, 'alist_sync_base_config.json')
         if config_type == 'sync' and not os.path.exists(base_config_file):
             return jsonify({'code': 400, 'message': '请先导入基础配置文件'})
 
         # 根据类型确定目标文件
         if config_type == 'sync':
-            dst_file = os.path.join(STORAGE_DIR, 'sync_config.json')
+            dst_file = os.path.join(STORAGE_DIR, 'alist_sync_sync_config.json')
         elif config_type == 'base':
-            dst_file = os.path.join(STORAGE_DIR, 'base_config.json')
+            dst_file = os.path.join(STORAGE_DIR, 'alist_sync_base_config.json')
         else:
             return jsonify({'code': 400, 'message': '无效的配置类型'})
 
