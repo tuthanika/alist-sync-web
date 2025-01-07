@@ -267,7 +267,6 @@
                         <i class="layui-icon">&#xe67e;</i>
                       </button>
                     </div>
-                    <hr class="layui-border-green" style="margin: 5px 0;">
                   </div>
                 </div>
               </div>
@@ -533,7 +532,6 @@
             '<i class="layui-icon">&#xe67e;</i>' +
           '</button>' +
         '</div>' +
-        '<hr class="layui-border-green" style="margin: 5px 0;">' +
       '</div>');
 
       $container.append($pathPair);
@@ -602,7 +600,6 @@
 
       if($pathPairs.find('.path-pair').length > 1) {
         $pathPair.remove();
-        ensureLastPathPairHasHr($pathPairs);
       } else {
         layer.msg('至少保留一对目录');
       }
