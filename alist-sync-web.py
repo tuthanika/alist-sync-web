@@ -14,14 +14,17 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from logging.handlers import TimedRotatingFileHandler
 
+
 # 替换 passlib 的密码哈希功能
 def hash_password(password: str) -> str:
     """使用 SHA-256 哈希密码"""
     return hashlib.sha256(password.encode()).hexdigest()
 
+
 def verify_password(password: str, hash: str) -> bool:
     """验证密码哈希"""
     return hash_password(password) == hash
+
 
 # 创建一个全局的调度器
 scheduler = BackgroundScheduler()
@@ -41,7 +44,7 @@ def import_from_file(module_name: str, file_path: str) -> Any:
 try:
     current_dir = os.path.dirname(os.path.abspath(__file__))
     alist_sync = import_from_file('alist_sync',
-                                     os.path.join(current_dir, 'alist_sync.py'))
+                                  os.path.join(current_dir, 'alist_sync.py'))
     AlistSync = alist_sync.AlistSync
 except Exception as e:
     print(f"导入alist_sync.py失败: {e}")
@@ -135,7 +138,7 @@ def setup_logger():
     log_file = os.path.join(log_dir, 'alist_sync.log')
 
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    
+
     # 文件处理器
     file_handler = TimedRotatingFileHandler(
         filename=log_file,
@@ -145,18 +148,18 @@ def setup_logger():
         encoding='utf-8'
     )
     file_handler.setFormatter(formatter)
-    
+
     # 控制台处理器
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
-    
+
     # 配置根日志记录器
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
     logger.handlers.clear()
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
-    
+
     return logger
 
 
@@ -165,7 +168,7 @@ class UserManager:
     def __init__(self, config_file: str):
         self.config_file = config_file
         self._ensure_config_exists()
-    
+
     def _ensure_config_exists(self):
         """确保用户配置文件存在"""
         if not os.path.exists(self.config_file):
@@ -176,7 +179,7 @@ class UserManager:
                 }]
             }
             self.save_config(default_config)
-    
+
     def load_config(self) -> Dict:
         """加载用户配置"""
         try:
@@ -185,7 +188,7 @@ class UserManager:
         except Exception as e:
             logger.error(f"加载用户配置失败: {e}")
             return {"users": []}
-    
+
     def save_config(self, config: Dict) -> bool:
         """保存用户配置"""
         try:
@@ -195,34 +198,34 @@ class UserManager:
         except Exception as e:
             logger.error(f"保存用户配置失败: {e}")
             return False
-    
+
     def verify_user(self, username: str, password: str) -> bool:
         """验证用户凭据"""
         config = self.load_config()
         user = next((u for u in config['users'] if u['username'] == username), None)
         return user and verify_password(password, user['password'])
-    
-    def change_user_password(self, username: str, new_username: str, 
-                           old_password: str, new_password: str) -> tuple[bool, str]:
+
+    def change_user_password(self, username: str, new_username: str,
+                             old_password: str, new_password: str) -> tuple[bool, str]:
         """修改用户密码"""
         config = self.load_config()
         user = next((u for u in config['users'] if u['username'] == username), None)
-        
+
         if not user:
             return False, "用户不存在"
-            
+
         if not verify_password(old_password, user['password']):
             return False, "原密码错误"
-            
+
         if username != new_username:
-            exists_user = next((u for u in config['users'] 
-                              if u['username'] == new_username and u != user), None)
+            exists_user = next((u for u in config['users']
+                                if u['username'] == new_username and u != user), None)
             if exists_user:
                 return False, "新用户名已存在"
-                
+
         user['username'] = new_username
         user['password'] = hash_password(new_password)
-        
+
         if self.save_config(config):
             return True, "修改成功"
         return False, "保存配置失败"
@@ -294,7 +297,7 @@ def change_password():
             data['oldPassword'],
             data['newPassword']
         )
-        
+
         if success:
             if data['oldUsername'] != data['newUsername']:
                 session['user_id'] = data['newUsername']
@@ -355,10 +358,10 @@ def test_connection():
         data = request.get_json()
         alist = AlistSync(
             data.get('baseUrl'),
-            data.get('username'), 
+            data.get('username'),
             data.get('password')
         )
-        
+
         return jsonify({
             "code": 200 if alist.login() else 500,
             "message": "连接测试成功" if alist.login() else "地址或用户名或密码错误"
@@ -382,7 +385,7 @@ class ConfigManager:
     def __init__(self, storage_dir: str):
         self.storage_dir = storage_dir
         os.makedirs(storage_dir, exist_ok=True)
-        
+
     def load(self, config_name: str) -> Optional[Dict]:
         """加载配置文件"""
         config_file = os.path.join(self.storage_dir, f'{config_name}.json')
@@ -395,7 +398,7 @@ class ConfigManager:
         except Exception as e:
             logger.error(f"读取配置失败: {str(e)}")
             return None
-            
+
     def save(self, config_name: str, data: Dict) -> bool:
         """保存配置文件"""
         config_file = os.path.join(self.storage_dir, f'{config_name}.json')
@@ -407,93 +410,94 @@ class ConfigManager:
             logger.error(f"保存配置失败: {str(e)}")
             return False
 
+
 # 优化任务执行管理
 class TaskManager:
     def __init__(self, config_manager: ConfigManager):
         self.config_manager = config_manager
-        
+
     def execute_task(self, task_id: Optional[int] = None) -> bool:
         """执行同步任务"""
         try:
             logger.info("开始执行同步任务")
-            
+
             # 加载配置
             sync_config = self.config_manager.load('sync_config')
             base_config = self.config_manager.load('base_config')
-            
+
             if not sync_config or not base_config:
                 logger.error("配置为空，无法执行同步任务")
                 return False
-                
+
             # 设置基础环境变量
             self._setup_env_vars(base_config)
-            
+
             # 处理任务
             tasks = sync_config.get('tasks', [])
             if not tasks:
                 logger.error("没有配置同步任务")
                 return False
-                
+
             for task in tasks:
                 if task_id is not None and task_id != task['id']:
                     continue
-                    
+
                 self._execute_single_task(task)
-                    
+
             return True
-            
+
         except Exception as e:
             logger.error(f"执行同步任务失败: {str(e)}")
             return False
-            
+
     def _setup_env_vars(self, base_config: Dict):
         """设置环境变量"""
         # 清除旧的环境变量
         for key in list(os.environ.keys()):
             if key.startswith('DIR_PAIRS'):
                 del os.environ[key]
-                
+
         # 设置新的环境变量
         os.environ.update({
             'BASE_URL': base_config.get('baseUrl', ''),
             'USERNAME': base_config.get('username', ''),
             'PASSWORD': base_config.get('password', '')
         })
-        
+
     def _execute_single_task(self, task: Dict):
         """执行单个任务"""
         task_name = task.get('taskName', '未知任务')
         sync_del_action = task.get('syncDelAction', 'none')
         logger.info(f"[{task_name}] 开始处理任务，差异处置策略: {sync_del_action}")
-        
+
         os.environ['SYNC_DELETE_ACTION'] = sync_del_action
         os.environ['EXCLUDE_DIRS'] = task.get('excludeDirs', '')
-        
+
         if task['syncMode'] == 'data':
             self._handle_data_sync(task)
         elif task['syncMode'] == 'file':
             self._handle_file_sync(task)
-            
+
     def _handle_data_sync(self, task: Dict):
         """处理数据同步模式"""
         source = task['sourceStorage']
         sync_dirs = task['syncDirs']
         exclude_dirs = task['excludeDirs']
-        
+
         if source not in exclude_dirs:
             exclude_dirs = f'{source}/{exclude_dirs}'
         exclude_dirs = exclude_dirs.replace('//', '/')
-        
+
         dir_pairs = []
         for target in task['targetStorages']:
             if source != target:
                 dir_pair = f"{source}/{sync_dirs}:{target}/{sync_dirs}".replace('//', '/')
                 dir_pairs.append(dir_pair)
-                
+
         if dir_pairs:
             os.environ['DIR_PAIRS'] = ';'.join(dir_pairs)
             alist_sync.main()
-            
+
     def _handle_file_sync(self, task: Dict):
         """处理文件同步模式"""
         dir_pairs = [f"{path['srcPath']}:{path['dstPath']}" for path in task['paths']]
@@ -501,9 +505,11 @@ class TaskManager:
             os.environ['DIR_PAIRS'] = ';'.join(dir_pairs)
             alist_sync.main()
 
+
 # 创建管理器实例
 config_manager = ConfigManager(STORAGE_DIR)
 task_manager = TaskManager(config_manager)
+
 
 # 优化配置相关接口
 @app.route('/api/save-sync-config', methods=['POST'])
@@ -514,6 +520,7 @@ def save_sync_config():
         schedule_sync_tasks()
         return jsonify({"code": 200, "message": "同步配置保存成功并已更新调度"})
     return jsonify({"code": 500, "message": "保存失败"})
+
 
 @app.route('/api/run-task', methods=['POST'])
 @login_required
@@ -562,7 +569,7 @@ class TimeUtils:
     def get_timestamp() -> int:
         """获取当前时间戳"""
         return int(time.time())
-    
+
     @staticmethod
     def datetime_to_timestamp(dt_str: str, fmt: str = "%Y-%m-%d %H:%M:%S") -> int:
         """时间字符串转时间戳"""
@@ -571,12 +578,12 @@ class TimeUtils:
         except Exception as e:
             logger.error(f"时间转换失败: {e}")
             raise
-            
+
     @staticmethod
     def timestamp_to_datetime(ts: int, fmt: str = '%Y-%m-%d %H:%M:%S') -> str:
         """时间戳转时间字符串"""
         return time.strftime(fmt, time.localtime(ts))
-    
+
     @staticmethod
     def get_next_run_times(cron_expr: str, count: int = 5) -> List[str]:
         """获取下次运行时间列表"""
@@ -591,13 +598,14 @@ class TimeUtils:
             logger.error(f"获取运行时间失败: {e}")
             raise
 
+
 # 优化调度器管理
 class SchedulerManager:
     def __init__(self, config_manager: ConfigManager, task_manager: TaskManager):
         self.scheduler = BackgroundScheduler()
         self.config_manager = config_manager
         self.task_manager = task_manager
-        
+
     def start(self):
         """启动调度器"""
         try:
@@ -607,7 +615,7 @@ class SchedulerManager:
         except Exception as e:
             logger.error(f"调度器启动失败: {e}")
             raise
-            
+
     def stop(self):
         """停止调度器"""
         try:
@@ -615,30 +623,30 @@ class SchedulerManager:
             logger.info("调度器已停止")
         except Exception as e:
             logger.error(f"停止调度器失败: {e}")
-            
+
     def reload_tasks(self):
         """重新加载所有任务"""
         try:
             self.scheduler.remove_all_jobs()
             sync_config = self.config_manager.load('sync_config')
-            
+
             if not sync_config or 'tasks' not in sync_config:
                 logger.warning("没有找到有效的同步任务配置")
                 return
-                
+
             for task in sync_config['tasks']:
                 self._add_task(task)
-                
+
         except Exception as e:
             logger.error(f"重新加载任务失败: {e}")
-            
+
     def _add_task(self, task: Dict):
         """添加单个任务"""
         try:
             if 'cron' not in task:
                 logger.warning(f"任务 {task.get('taskName', 'unknown')} 没有配置cron表达式")
                 return
-                
+
             job_id = f"sync_task_{task['id']}"
             self.scheduler.add_job(
                 func=self.task_manager.execute_task,
@@ -648,12 +656,14 @@ class SchedulerManager:
                 args=[task['id']]
             )
             logger.info(f"成功添加任务 {task['taskName']}, ID: {job_id}, Cron: {task['cron']}")
-            
+
         except Exception as e:
             logger.error(f"添加任务失败: {e}")
 
+
 # 创建调度器管理器实例
 scheduler_manager = SchedulerManager(config_manager, task_manager)
+
 
 # 优化相关接口
 @app.route('/api/next-run-time', methods=['POST'])
@@ -662,7 +672,7 @@ def next_run_time():
     try:
         data = request.get_json()
         cron_expr = data.get('cron', '').strip()
-        
+
         # 如果没有提供cron表达式，尝试从配置中获取
         if not cron_expr:
             task_id = data.get('id')
@@ -675,16 +685,17 @@ def next_run_time():
 
         if not cron_expr:
             return jsonify({"code": 400, "message": "缺少cron参数"})
-            
+
         next_times = TimeUtils.get_next_run_times(cron_expr)
         return jsonify({
-            "code": 200, 
+            "code": 200,
             "data": next_times,
             "cron": cron_expr  # 返回使用的cron表达式
         })
     except Exception as e:
         logger.error(f"解析cron表达式失败: {e}")
         return jsonify({"code": 500, "message": f"解析出错: {str(e)}"})
+
 
 # 将日志接口移到主函数之前
 @app.route('/api/logs', methods=['GET'])
@@ -721,6 +732,7 @@ def get_logs():
             'code': 500,
             'message': f"获取日志失败: {str(e)}"
         })
+
 
 # 主函数
 if __name__ == '__main__':

@@ -2,10 +2,11 @@
 
 一个基于 Web 界面的 Alist 存储同步工具，支持多任务管理、定时同步、差异处理等功能。
 
-
 <div align="center">
   
-[![github tag][gitHub-tag-image]][github-url] [![docker pulls][docker-pulls-image]][docker-url] [![docker image size][docker-image-size-image]][docker-url]
+[![github tag][gitHub-tag-image]][github-url] [![docker pulls][docker-pulls-image]][docker-url] [![docker image size][docker-image-size-image]][docker-url]  
+**如果好用，请Star！非常感谢！**  [GitHub](https://github.com/xjxjin/alist-sync) [Gitee](https://gitee.com/xjxjin/alist-sync) [DockerHub](https://hub.docker.com/r/xjxjin/alist-sync)
+---
 
 [gitHub-tag-image]: https://img.shields.io/github/v/tag/xjxjin/alist-sync
 [docker-pulls-image]: https://img.shields.io/docker/pulls/xjxjin/alist-sync
@@ -86,6 +87,7 @@ http://localhost:52441
 支持两种同步模式：
 
 #### 数据同步模式
+- 各个网盘之间同目录数据备份
 - 选择源存储器和目标存储器
 - 配置同步目录
 - 支持排除目录
@@ -93,6 +95,7 @@ http://localhost:52441
 - 参照最后图片
 
 #### 文件同步模式
+- 需要填写全路径
 - 手动配置源路径和目标路径
 - 支持多个路径对
 - 支持排除目录
@@ -102,7 +105,7 @@ http://localhost:52441
 
 提供三种差异处理方式：
 - 不处理：保留目标目录中的差异文件
-- 移动到回收站：将差异文件移动到目标存储的回收站
+- 移动到回收站：将差异文件移动到目标存储的回收站(trash)
 - 删除：直接删除目标目录中的差异文件
 - 移动/删除 在有的存储源会失效欢迎提交Issue，我反馈到 Alist 作者
 
@@ -139,7 +142,13 @@ http://localhost:52441
 
 ## 更新记录
 
-### v1.0.0
+### v1.0.6
+- 2025-01-07
+- 在删除模式下，修复源目录为空，目标目录多余文件不能正确删除问题
+- 简单适配移动端 UI
+
+### v1.0.5
+- 2025-01-05
 - 初始版本发布
 - 支持基础的同步功能
 - 支持 Web 界面管理
@@ -159,11 +168,8 @@ http://localhost:52441
 MIT License
 
 
-
 ## 数据同步
 <img src="https://raw.githubusercontent.com/xjxjin/alist-sync/main/static/images/数据同步.png" width="700" alt="数据同步">
 
 ## 文件同步
 <img src="https://raw.githubusercontent.com/xjxjin/alist-sync/main/static/images/文件同步.png" width="700" alt="文件同步">
-
-

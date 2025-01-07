@@ -5,14 +5,51 @@ from datetime import datetime, timedelta
 import os
 import logging
 from typing import List, Dict, Optional, Union
+from logging.handlers import TimedRotatingFileHandler
 
-# 配置日志记录器
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger(__name__)
+
+def setup_logger():
+    """配置日志记录器"""
+    # 获取当前文件所在目录
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # 创建日志目录
+    log_dir = os.path.join(current_dir, 'data/log')
+    os.makedirs(log_dir, exist_ok=True)
+
+    # 设置日志文件路径
+    log_file = os.path.join(log_dir, 'alist_sync.log')
+
+    # 创建 TimedRotatingFileHandler
+    file_handler = TimedRotatingFileHandler(
+        filename=log_file,
+        when='midnight',
+        interval=1,
+        backupCount=7,
+        encoding='utf-8'
+    )
+
+    # 创建控制台处理器
+    console_handler = logging.StreamHandler()
+
+    # 设置日志格式
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+
+    # 配置根日志记录器
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+
+    # 避免重复添加处理器
+    if not logger.handlers:
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
+
+    return logger
+
+
+# 初始化日志记录器
+logger = setup_logger()
 
 
 def parse_time_and_adjust_utc(date_str: str) -> datetime:
@@ -201,17 +238,16 @@ class AlistSync:
                 src_contents = self.get_directory_contents(src_dir)
                 if not src_contents:
                     logger.info(f"源目录为空或获取内容失败: {src_dir}")
-                    return True
+                    # return True
 
                 if self.sync_delete:
                     self._handle_sync_delete(src_dir, dst_dir, src_contents)
-
-                for item in src_contents:
-                    if not self._copy_item_with_check(src_dir, dst_dir, item, exclude_dirs):
-                        logger.error(f"复制项目失败: {item.get('name', '未知项目')}")
-                        return False
-
-                logger.info(f"递归复制完成 - 源目录: {src_dir}, 目标目录: {dst_dir}")
+                if src_contents:
+                    for item in src_contents:
+                        if not self._copy_item_with_check(src_dir, dst_dir, item, exclude_dirs):
+                            logger.error(f"复制项目失败: {item.get('name', '未知项目')}")
+                            return False
+                    logger.info(f"递归复制完成 - 源目录: {src_dir}, 目标目录: {dst_dir}")
                 return True
         except Exception as e:
             logger.error(f"递归复制失败: {str(e)}")
@@ -221,10 +257,19 @@ class AlistSync:
         """处理同步删除逻辑"""
         try:
             dst_contents = self.get_directory_contents(dst_dir)
-            src_names = {item["name"] for item in src_contents}
-            dst_names = {item["name"] for item in dst_contents}
+            src_names = {}
+            if src_contents:
+                src_names = {item["name"] for item in src_contents}
 
-            to_delete = dst_names - src_names
+            dst_names = {}
+            if dst_contents:
+                dst_names = {item["name"] for item in dst_contents}
+
+            if src_names:
+                to_delete = dst_names - src_names
+            else:
+                to_delete = dst_names
+
             if not to_delete:
                 logger.info("没有需要删除的项目")
                 return
@@ -428,8 +473,9 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
 
 
 def code_souce():
-    logger.info("国内访问: https://gitee.com/xjxjin/alist-sync")
-    logger.info("国际访问: https://github.com/xjxjin/alist-sync")
+    logger.info("如果好用，请Star！非常感谢！ https://gitee.com/xjxjin/alist-sync")
+    logger.info("如果好用，请Star！非常感谢！ https://github.com/xjxjin/alist-sync")
+    logger.info("如果好用，请Star！非常感谢！ https://hub.docker.com/r/xjxjin/alist-sync")
 
 
 def xiaojin():
