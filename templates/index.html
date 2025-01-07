@@ -92,6 +92,75 @@
       color: #099cec;
       border-color: #099cec;
     }
+    /* 移动端适配样式 */
+    @media screen and (max-width: 768px) {
+      .main-container {
+        width: 95%;
+        margin: 10px auto;
+      }
+      
+      /* 调整头部按钮位置 */
+      .header-btns {
+        position: static;
+        text-align: center;
+        margin: 10px 0;
+      }
+      
+      .header-btns .layui-btn {
+        margin: 5px;
+      }
+      
+      /* 调整表单项布局 */
+      .layui-form-label {
+        width: auto;
+        padding: 9px 0;
+        text-align: left;
+        float: none;
+      }
+      
+      .layui-input-block,
+      .layui-input-inline {
+        margin-left: 0 !important;
+        width: 100% !important;
+      }
+      
+      /* 调整路径对布局 */
+      .path-pair {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      
+      .path-pair .layui-form-label {
+        padding: 5px 0;
+      }
+      
+      .path-pair .layui-input-inline {
+        margin-right: 0;
+      }
+      
+      /* 调整按钮组布局 */
+      .layui-form-item .layui-input-block {
+        margin-left: 0;
+        text-align: center;
+      }
+      
+      .layui-form-item .layui-input-block .layui-btn {
+        margin: 5px;
+      }
+      
+      /* 调整链接组布局 */
+      .link-group {
+        flex-wrap: wrap;
+      }
+      
+      /* 调整同步目标差异处置策略布局 */
+      .syncDelAction-group {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -364,17 +433,14 @@
   <script type="text/html" id="logsViewTpl">
     <div style="padding: 15px;">
       <div class="layui-form">
-        <div class="layui-form-item">
-          <label class="layui-form-label">日期选择</label>
-          <div class="layui-input-inline">
-            <input type="text" class="layui-input" id="logDate" placeholder="选择日期">
-          </div>
-          <div class="layui-input-inline">
-            <button type="button" class="layui-btn layui-btn-primary" id="refreshLogs">刷新</button>
+        <div class="layui-form-item" style="margin-bottom: 10px;">
+          <div class="layui-inline" style="width: 100%; margin-right: 0;">
+            <input type="text" class="layui-input" id="logDate" placeholder="选择日期" style="margin-bottom: 10px;">
+            <button type="button" class="layui-btn layui-btn-primary layui-btn-fluid" id="refreshLogs">刷新</button>
           </div>
         </div>
       </div>
-      <div class="logs-content" style="margin-top: 10px; max-height: 500px; overflow-y: auto;">
+      <div class="logs-content" style="margin-top: 10px; max-height: 70vh; overflow-y: auto;">
       </div>
     </div>
   </script>
@@ -1313,10 +1379,13 @@
 
     // 修改登录密码按钮点击事件
     $('#changePassword').on('click', function(){
+      const isMobile = window.innerWidth <= 768;
       layer.open({
         type: 1,
         title: '修改登录密码',
         content: $('#changePasswordTpl').html(),
+        area: isMobile ? ['95%', 'auto'] : ['500px', '400px'],
+        maxWidth: '100%',
         success: function(layero, index){
           // 获取当前登录用户名并填充
           var $form = layero.find('.layui-form');
@@ -1330,8 +1399,7 @@
               }
             }
           });
-        },
-        area: ['500px', '400px']
+        }
       });
     });
 
@@ -1381,11 +1449,16 @@
 
     // 查看日志按钮点击事件
     $('#viewLogs').on('click', function(){
+        // 根据屏幕宽度设置不同的弹窗大小
+        const isMobile = window.innerWidth <= 768;
         layer.open({
             type: 1,
             title: '执行日志',
             content: $('#logsViewTpl').html(),
-            area: ['800px', '600px'],
+            area: isMobile ? ['95%', '80%'] : ['800px', '600px'],
+            maxWidth: '100%',
+            maxHeight: '100%',
+            scrollbar: false,
             success: function(layero, index){
                 // 初始化日期选择器
                 laydate.render({
