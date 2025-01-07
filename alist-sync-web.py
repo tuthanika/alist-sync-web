@@ -789,6 +789,11 @@ def import_config():
         if not config_type or not config_content:
             return jsonify({'code': 400, 'message': '请提供配置类型和内容'})
 
+        # 检查基础配置文件是否存在
+        base_config_file = os.path.join(STORAGE_DIR, 'base_config.json')
+        if config_type == 'sync' and not os.path.exists(base_config_file):
+            return jsonify({'code': 400, 'message': '请先导入基础配置文件'})
+
         # 根据类型确定目标文件
         if config_type == 'sync':
             dst_file = os.path.join(STORAGE_DIR, 'sync_config.json')

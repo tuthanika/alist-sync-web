@@ -475,8 +475,8 @@
       <div class="layui-form-item">
         <label class="layui-form-label">配置类型</label>
         <div class="layui-input-block">
-          <input type="radio" name="configType" value="sync" title="同步配置" lay-filter="configType" checked>
-          <input type="radio" name="configType" value="base" title="基础配置" lay-filter="configType">
+          <input type="radio" name="configType" value="base" title="基础配置" lay-filter="configType" checked>
+          <input type="radio" name="configType" value="sync" title="同步配置" lay-filter="configType">
         </div>
       </div>
       <div class="layui-form-item">
@@ -1654,14 +1654,14 @@
     // 导出配置
     $('#exportConfig').on('click', function(){
       layer.confirm('请选择要导出的配置类型', {
-        btn: ['同步配置','基础配置','取消']
-      }, function(index){
-        // 导出同步配置
-        exportConfig('sync');
-        layer.close(index);
+        btn: ['基础配置','同步配置','取消']
       }, function(index){
         // 导出基础配置
         exportConfig('base');
+        layer.close(index);
+      }, function(index){
+        // 导出同步配置
+        exportConfig('sync');
         layer.close(index);
       });
     });
@@ -1676,6 +1676,24 @@
         success: function(layero, index){
           // 重新渲染表单
           form.render();
+
+          // 绑定配置类型切换事件
+          form.on('radio(configType)', function(data){
+            if(data.value === 'sync') {
+              // 检查基础配置是否存在
+              $.ajax({
+                url: '/api/get-base-config',
+                method: 'GET',
+                success: function(res){
+                  if(res.code !== 200){
+                    layer.msg('请先导入基础配置文件');
+                    layero.find('input[name="configType"][value="base"]').prop('checked', true);
+                    form.render('radio');
+                  }
+                }
+              });
+            }
+          });
 
           // 绑定文件选择事件
           layero.find('input[type="file"]').on('change', function(e){
@@ -1710,6 +1728,21 @@
             } else if(configType === 'base' && (!content.baseUrl || !content.username || !content.password)) {
               layer.msg('无效的基础配置文件');
               return;
+            }
+
+            // 如果是同步配置,先检查基础配置是否存在
+            if(configType === 'sync') {
+              $.ajax({
+                url: '/api/get-base-config',
+                method: 'GET',
+                async: false,
+                success: function(res){
+                  if(res.code !== 200){
+                    layer.msg('请先导入基础配置文件');
+                    return false;
+                  }
+                }
+              });
             }
 
             // 发送导入请求
