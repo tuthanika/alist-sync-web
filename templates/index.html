@@ -1773,7 +1773,6 @@
         content: $('#importConfigTpl').html(),
         area: ['600px', '500px'],
         success: function(layero, index){
-          // 重新渲染表单
           form.render();
 
           // 绑定配置类型切换事件
@@ -1820,12 +1819,19 @@
             // 验证JSON格式
             var content = JSON.parse(configContent);
 
-            // 验证配置类型
-            if(configType === 'sync' && !content.tasks) {
+            // 修改基础配置验证逻辑
+            if(configType === 'base') {
+              if(!content.baseUrl) {
+                layer.msg('基础配置文件必须包含 baseUrl');
+                return;
+              }
+              // 检查是否至少包含token或者(username和password)
+              if(!content.token && !(content.username && content.password)) {
+                layer.msg('基础配置文件必须包含token或者同时包含username和password');
+                return;
+              }
+            } else if(configType === 'sync' && !content.tasks) {
               layer.msg('无效的同步配置文件');
-              return;
-            } else if(configType === 'base' && (!content.baseUrl || !content.username || !content.password)) {
-              layer.msg('无效的基础配置文件');
               return;
             }
 
