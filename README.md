@@ -182,6 +182,7 @@ ql raw https://github.com/xjxjin/alist-sync/raw/main/alist-sync-ql.py
 - 2025-01-09
 - 修复源目录不存在 bug
 - 修复删除模式下目标目录为空判断报错异常
+- 修复页面刷新任务展示异常
 
 ### v1.0.7
 - 2025-01-08
@@ -234,10 +235,10 @@ ql raw https://github.com/xjxjin/alist-sync/raw/main/alist-sync-ql.py
 
 ### 2024-05-13更新
 - 1.新增文件存在判断逻辑
-- 文件名称 
-- 文件大小
+  - 文件名称 
+  - 文件大小
 - 2.CRON_SCHEDULE 变更为参数可选
-- 当参数不传变更为一次调度，可以配合青龙远程调度
+  - 当参数不传变更为一次调度，可以配合青龙远程调度
 
 
 ## 问题反馈
