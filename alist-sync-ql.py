@@ -245,6 +245,9 @@ class AlistSync:
         """同步两个目录"""
         try:
             logger.info(f"开始同步目录 - 源目录: {src_dir}, 目标目录: {dst_dir}")
+            if not self.is_path_exists(src_dir):
+                logger.error(f"源目录【{src_dir}】不存在，停止同步")
+                return False
             if not self.is_path_exists(dst_dir):
                 logger.info(f"目标目录不存在，创建目录: {dst_dir}")
                 if not self.create_directory(dst_dir):
