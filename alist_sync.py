@@ -298,7 +298,7 @@ class AlistSync:
                 dst_names = {item["name"] for item in dst_contents}
 
             if src_names:
-                to_delete = dst_names - src_names
+                to_delete = set(dst_names) - set(src_names)
             else:
                 to_delete = dst_names
 
