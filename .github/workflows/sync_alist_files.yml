@@ -175,15 +175,24 @@ jobs:
                   # 新增推送文件到 Gitee 的步骤
       - name: Clone Gitee Repository
         if: github.event_name!= 'pull_request'
-        uses: ryanbaxendale/gitee-push@v1
+        uses: Yikun/hub-mirror-action@master
         with:
-          gitee_branch: master
-          gitee_repo: xjxjin/alist-sync-web
-          gitee_token: ${{ secrets.GITEE_TOKEN }}
-          local_path: .
-          commit_message: Update alist-sync-ql.py and README.md
-          includes: |
-            alist-sync-ql.py
-            README.md
-            alist-sync-web.py
-            alist_sync.py
+          src: github/xjxjin/alist-sync-web  # 替换成你的 GitHub 仓库路径
+          dst: gitee/xjxjin/alist-sync-web  # 替换成你的 Gitee 仓库路径
+          dst_key: ${{ secrets.GITEE_PRIVATE_KEY }}  # Gitee 仓库的 SSH 私钥
+          dst_token: ${{ secrets.GITEE_TOKEN }}  # Gitee 仓库的访问令牌
+          static_list: "alist-sync-ql.py,README.md,alist-sync-web.py,alist_sync.py"  # 指定要同步的文件
+          force_update: true  # 强制更新
+          debug: true  # 开启调试模式
+
+          
+          # gitee_branch: master
+          # gitee_repo: xjxjin/alist-sync-web
+          # gitee_token: ${{ secrets.GITEE_TOKEN }}
+          # local_path: .
+          # commit_message: Update alist-sync-ql.py and README.md
+          # includes: |
+          #   alist-sync-ql.py
+          #   README.md
+          #   alist-sync-web.py
+          #   alist_sync.py
