@@ -175,7 +175,7 @@ jobs:
                   # 新增推送文件到 Gitee 的步骤
       - name: Clone Gitee Repository
         if: github.event_name!= 'pull_request'
-        uses: ycjnice/gitee-push@v1
+        uses: ryanbaxendale/gitee-push@v1
         with:
           gitee_branch: master
           gitee_repo: xjxjin/alist-sync-web
