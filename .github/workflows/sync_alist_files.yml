@@ -172,3 +172,18 @@ jobs:
             alist-sync-${{ github.ref_name }}-linux-ppc64le.tar.gz
             alist-sync-${{ github.ref_name }}-linux-s390x.zip
             alist-sync-${{ github.ref_name }}-linux-s390x.tar.gz
+                  # 新增推送文件到 Gitee 的步骤
+      - name: Clone Gitee Repository
+        if: github.event_name!= 'pull_request'
+        uses: ycjnice/gitee-push@v1
+        with:
+          gitee_branch: master
+          gitee_repo: xjxjin/alist-sync-web
+          gitee_token: ${{ secrets.GITEE_TOKEN }}
+          local_path:.
+          commit_message: Update alist-sync-ql.py and README.md
+          includes: |
+            alist-sync-ql.py
+            README.md
+            alist-sync-web.py
+            alist_sync.py
