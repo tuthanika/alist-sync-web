@@ -180,7 +180,7 @@ jobs:
           gitee_branch: master
           gitee_repo: xjxjin/alist-sync-web
           gitee_token: ${{ secrets.GITEE_TOKEN }}
-          local_path:.
+          local_path: .
           commit_message: Update alist-sync-ql.py and README.md
           includes: |
             alist-sync-ql.py
