@@ -402,6 +402,11 @@ class ConfigManager:
 
     def save(self, config_name: str, data: Dict) -> bool:
         """保存配置文件"""
+        # 遍历 tasks 列表，检查 syncMode 是否为 file_move，如果是则将 syncDelAction 修改为 none
+        for task in data.get("tasks", []):
+            if task.get("syncMode") == "file_move":
+                task["syncDelAction"] = "none"
+
         config_file = os.path.join(self.storage_dir, f'{config_name}.json')
         try:
             with open(config_file, 'w', encoding='utf-8') as f:
@@ -513,8 +518,9 @@ class TaskManager:
         """处理文件移动模式"""
         dir_pairs = [f"{path['srcPathMove']}:{path['dstPathMove']}" for path in task['paths']]
         if dir_pairs:
+            os.environ['MOVE_FILE'] = 'true'
             os.environ['DIR_PAIRS'] = ';'.join(dir_pairs)
-            alist_sync.main(move_file=True)
+            alist_sync.main()
 
 
 # 创建管理器实例
