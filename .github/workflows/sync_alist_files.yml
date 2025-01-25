@@ -68,7 +68,7 @@ jobs:
         run: |
           echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           # 为阿里云镜像准备标签
-          echo "ALIYUN_IMAGE=registry.cn-hangzhou.aliyuncs.com/xjxjin/alist-sync:${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          echo "ALIYUN_IMAGE=registry.cn-hangzhou.aliyuncs.com/xjxjin/${{ env.DOCKER_IMAGE }}:${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
       - name: Build and push
         uses: docker/build-push-action@v5
