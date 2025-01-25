@@ -872,44 +872,6 @@ def cleanup_backup_files(directory: str, days: int = 7):
     except Exception as e:
         logger.error(f"清理备份文件失败: {str(e)}")
 
-def get_current_image_info():
-    # 获取容器 ID
-    container_id = os.environ.get('HOSTNAME')
-
-    # Docker API 端点，这里假设 Docker 守护进程监听在默认的 TCP 端口 2375
-    conn = http.client.HTTPConnection("127.0.0.1", 52441)
-
-    try:
-        # 构建请求路径
-        path = f"/containers/{container_id}/json"
-
-        # 发送 GET 请求
-        conn.request("GET", path)
-
-        # 获取响应
-        response = conn.getresponse()
-
-        # 读取响应数据
-        data = response.read().decode('utf-8')
-
-        # 解析 JSON 数据
-        json_data = json.loads(data)
-
-        # 获取镜像名称和标签
-        image_name = json_data['Image']
-        parts = image_name.split(':')
-        if len(parts) == 2:
-            image_name, image_tag = parts
-        else:
-            image_tag = 'latest'
-
-        return image_name, image_tag
-    except Exception as e:
-        print(f"Error: {e}")
-        return None, None
-    finally:
-        # 关闭连接
-        conn.close()
 def get_current_version():
     """获取当前运行版本"""
     try:
@@ -917,8 +879,6 @@ def get_current_version():
         
         # 1. 首先尝试从 Docker 环境获取
         try:
-            container_id = os.environ.get('HOSTNAME')
-            logger.info("container_id...",container_id)
             # 获取容器ID
             with open('/proc/1/cpuset', 'r') as f:
                 container_id = f.read().strip().split('/')[-1]
