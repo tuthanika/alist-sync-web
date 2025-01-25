@@ -53,10 +53,22 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # 添加登录阿里云镜像仓库
+      - name: Login to Aliyun Container Registry
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: docker/login-action@v3
+        with:
+          registry: registry.cn-hangzhou.aliyuncs.com  # 替换为你的阿里云镜像仓库地址
+          username: ${{ secrets.ALIYUN_USERNAME }}
+          password: ${{ secrets.ALIYUN_PASSWORD }}
+
       - name: Get version from tag
         if: startsWith(github.ref, 'refs/tags/')
         id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        run: |
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          # 为阿里云镜像准备标签
+          echo "ALIYUN_IMAGE=registry.cn-hangzhou.aliyuncs.com/xjxjin/alist-sync:${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -64,7 +76,9 @@ jobs:
           context: .
           platforms: ${{ env.PLATFORMS }}
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ startsWith(github.ref, 'refs/tags/') && steps.get_version.outputs.ALIYUN_IMAGE || '' }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -188,27 +202,3 @@ jobs:
           static_list: "alist-sync-web"  # 静态同步列表，在此填写需要同步的仓库名称，可填写多个
           timeout: '600s'  # git超时设置，超时后会自动重试git操作
 
-
-#      - name: Clone Gitee Repository
-#        if: github.event_name!= 'pull_request'
-#        uses: Yikun/hub-mirror-action@master
-#        with:
-#          src: github/xjxjin/alist-sync-web  # 替换成你的 GitHub 仓库路径
-#          dst: gitee/xjxjin/alist-sync-web  # 替换成你的 Gitee 仓库路径
-#          dst_key: ${{ secrets.GITEE_PRIVATE_KEY }}  # Gitee 仓库的 SSH 私钥
-#          dst_token: ${{ secrets.GITEE_TOKEN }}  # Gitee 仓库的访问令牌
-#          static_list: "alist-sync-ql.py,README.md,alist-sync-web.py,alist_sync.py"  # 指定要同步的文件
-#          force_update: true  # 强制更新
-#          debug: true  # 开启调试模式
-
-          
-          # gitee_branch: master
-          # gitee_repo: xjxjin/alist-sync-web
-          # gitee_token: ${{ secrets.GITEE_TOKEN }}
-          # local_path: .
-          # commit_message: Update alist-sync-ql.py and README.md
-          # includes: |
-          #   alist-sync-ql.py
-          #   README.md
-          #   alist-sync-web.py
-          #   alist_sync.py
