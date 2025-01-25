@@ -913,44 +913,32 @@ def get_current_image_info():
 def get_current_version():
     """获取当前运行版本"""
     try:
-
-        info = get_current_image_info()
-        logger.info("开始获取当前版本:",info)
         logger.info("开始获取当前版本...")
-        # 首先尝试从容器环境变量获取
-        cgroup_file = '/proc/1/cgroup'
-        if os.path.exists(cgroup_file):
-            logger.info("检测到Docker环境")
-            try:
-                # 尝试从环境变量获取版本号
-                version = os.getenv('VERSION')
-                if version:
-                    logger.info(f"从环境变量获取到版本号: {version}")
-                    return version.lstrip('v')
-                logger.info("环境变量中未找到VERSION")
-                
-                # 尝试从容器标签获取版本号
-                with open('/proc/1/cgroup', 'r') as f:
-                    for line in f:
-                        if 'docker' in line:
-                            container_id = line.strip().split('/')[-1]
-                            logger.info(f"获取到容器ID: {container_id}")
-                            # 使用 docker inspect 命令获取镜像标签
-                            result = os.popen(f'docker inspect {container_id}').read()
-                            if result:
-                                data = json.loads(result)
-                                if data and len(data) > 0:
-                                    image_tag = data[0].get('Config', {}).get('Image', '').split(':')[-1]
-                                    if image_tag and image_tag != 'latest':
-                                        logger.info(f"从容器标签获取到版本号: {image_tag}")
-                                        return image_tag.lstrip('v')
-                            break
-            except Exception as e:
-                logger.warning(f"从Docker环境获取版本号失败: {e}")
         
-        # 如果无法从容器环境获取，则尝试从VERSION文件获取
+        # 1. 首先尝试从 Docker 环境获取
+        try:
+            container_id = os.environ.get('HOSTNAME')
+            logger.info("container_id...",container_id)
+            # 获取容器ID
+            with open('/proc/1/cpuset', 'r') as f:
+                container_id = f.read().strip().split('/')[-1]
+                logger.info(f"获取到容器ID: {container_id}")
+            
+            # 使用 docker inspect 获取镜像信息
+            cmd = f"docker inspect --format='{{{{.Config.Image}}}}' {container_id}"
+            image_info = os.popen(cmd).read().strip()
+            logger.info(f"获取到镜像信息: {image_info}")
+            
+            if ':' in image_info:
+                version = image_info.split(':')[-1]
+                if version and version != 'latest':
+                    logger.info(f"从Docker环境获取到版本号: {version}")
+                    return version.lstrip('v')
+        except Exception as e:
+            logger.warning(f"从Docker环境获取版本号失败: {e}")
+        
+        # 2. 如果无法从Docker环境获取，则从VERSION文件获取
         version_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'VERSION')
-        logger.info(f"尝试从VERSION文件获取版本号: {version_file}")
         if os.path.exists(version_file):
             with open(version_file, 'r') as f:
                 version = f.read().strip()
@@ -958,8 +946,9 @@ def get_current_version():
                 return version.lstrip('v')
         else:
             logger.warning("VERSION文件不存在")
-                
+        
         return "unknown"
+        
     except Exception as e:
         logger.error(f"获取当前版本失败: {e}")
         return "unknown"
