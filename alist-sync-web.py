@@ -877,35 +877,38 @@ def get_current_version():
     try:
         logger.info("开始获取当前版本...")
         
-        # 1. 首先尝试从 Docker 环境获取
+        # 1. 首先尝试从容器环境变量获取
         try:
-            # 获取容器ID
-            with open('/proc/1/cpuset', 'r') as f:
-                container_id = f.read().strip().split('/')[-1]
-                logger.info(f"获取到容器ID: {container_id}")
-            
-            # 使用 docker inspect 获取镜像信息
-            cmd = f"docker inspect --format='{{{{.Config.Image}}}}' {container_id}"
-            image_info = os.popen(cmd).read().strip()
-            logger.info(f"获取到镜像信息: {image_info}")
-            
-            if ':' in image_info:
-                version = image_info.split(':')[-1]
-                if version and version != 'latest':
-                    logger.info(f"从Docker环境获取到版本号: {version}")
-                    return version.lstrip('v')
+            # 尝试从 /etc/os-release 获取容器信息
+            with open('/proc/self/environ', 'rb') as f:
+                environ = f.read().decode('utf-8').split('\0')
+                for env in environ:
+                    if env.startswith('VERSION='):
+                        version = env.split('=')[1]
+                        logger.info(f"从环境变量获取到版本号: {version}")
+                        return version.lstrip('v')
+                    # 也可以尝试获取镜像名称
+                    if env.startswith('IMAGE_NAME='):
+                        image_name = env.split('=')[1]
+                        if ':' in image_name:
+                            version = image_name.split(':')[1]
+                            if version and version != 'latest':
+                                logger.info(f"从镜像名称获取到版本号: {version}")
+                                return version.lstrip('v')
+            logger.info("未从环境变量获取到版本信息")
         except Exception as e:
-            logger.warning(f"从Docker环境获取版本号失败: {e}")
+            logger.warning(f"从容器环境获取版本号失败: {e}")
         
-        # 2. 如果无法从Docker环境获取，则从VERSION文件获取
+        # 2. 如果无法从容器环境获取，则从VERSION文件获取
         version_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'VERSION')
+        logger.info(f"尝试从VERSION文件获取版本号，文件路径: {version_file}")
         if os.path.exists(version_file):
             with open(version_file, 'r') as f:
                 version = f.read().strip()
                 logger.info(f"从VERSION文件获取到版本号: {version}")
                 return version.lstrip('v')
         else:
-            logger.warning("VERSION文件不存在")
+            logger.warning(f"VERSION文件不存在: {version_file}")
         
         return "unknown"
         
