@@ -877,29 +877,13 @@ def get_current_version():
     try:
         logger.info("开始获取当前版本...")
         
-        # 1. 首先尝试从容器环境变量获取
-        try:
-            # 尝试从 /etc/os-release 获取容器信息
-            with open('/proc/self/environ', 'rb') as f:
-                environ = f.read().decode('utf-8').split('\0')
-                for env in environ:
-                    if env.startswith('VERSION='):
-                        version = env.split('=')[1]
-                        logger.info(f"从环境变量获取到版本号: {version}")
-                        return version.lstrip('v')
-                    # 也可以尝试获取镜像名称
-                    if env.startswith('IMAGE_NAME='):
-                        image_name = env.split('=')[1]
-                        if ':' in image_name:
-                            version = image_name.split(':')[1]
-                            if version and version != 'latest':
-                                logger.info(f"从镜像名称获取到版本号: {version}")
-                                return version.lstrip('v')
-            logger.info("未从环境变量获取到版本信息")
-        except Exception as e:
-            logger.warning(f"从容器环境获取版本号失败: {e}")
-        
-        # 2. 如果无法从容器环境获取，则从VERSION文件获取
+        # 1. 尝试从环境变量直接获取
+        version = os.getenv('VERSION')
+        if version:
+            logger.info(f"从环境变量获取到版本号: {version}")
+            return version.lstrip('v')
+            
+        # 2. 如果环境变量没有，则从VERSION文件获取
         version_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'VERSION')
         logger.info(f"尝试从VERSION文件获取版本号，文件路径: {version_file}")
         if os.path.exists(version_file):
