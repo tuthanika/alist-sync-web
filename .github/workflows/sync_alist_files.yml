@@ -85,6 +85,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
+          build-args: |
+            VERSION=${{ github.ref_name }}
 
       - name: Update Docker Hub Description
         if: github.event_name != 'pull_request'
