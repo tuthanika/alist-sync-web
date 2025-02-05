@@ -905,7 +905,7 @@ def get_latest_version():
     try:
         logger.info("开始获取最新版本...")
         # 首先尝试从 GitHub 获取
-        parsed_url = urllib.parse.urlparse("https://api.github.com/repos/xjxjin/alist-sync-web/tags")
+        parsed_url = urllib.parse.urlparse("https://api.github.com/repos/xjxjin/alist-sync/tags")
         logger.info(f"尝试从GitHub获取: {parsed_url.geturl()}")
         conn = http.client.HTTPSConnection(parsed_url.netloc)
         
@@ -934,7 +934,7 @@ def get_latest_version():
             
             # 如果从 GitHub 获取失败，尝试从 Gitee 获取
             logger.info("从GitHub获取失败，尝试从Gitee获取...")
-            parsed_url = urllib.parse.urlparse("https://gitee.com/api/v5/repos/xjxjin/alist-sync-web/tags")
+            parsed_url = urllib.parse.urlparse("https://gitee.com/api/v5/repos/xjxjin/alist-sync/tags")
             logger.info(f"尝试从Gitee获取: {parsed_url.geturl()}")
             conn = http.client.HTTPSConnection(parsed_url.netloc)
             conn.request("GET", parsed_url.path, headers=headers)
