@@ -450,11 +450,7 @@ class AlistSync:
             src_path = f"{src_dir}/{item_name}".replace('//', '/')
             dst_path = f"{dst_dir}/{item_name}".replace('//', '/')
 
-            # 检查是否在未完成的任务列表中，如果存在，则跳过
-            for task_item in self.task_list:
-                if src_dir in task_item and dst_dir in task_item and src_path in task_item:
-                    logger.info(f"文件【{item_name}】在未完成的任务列表中，跳过复制")
-                    return True
+
 
             # 如果是目录，递归处理
             if item.get('is_dir', False):
@@ -470,6 +466,11 @@ class AlistSync:
                 # 递归复制子目录
                 return self._recursive_copy(src_path, dst_path)
             else:
+                # 检查是否在未完成的任务列表中，如果存在，则跳过
+                for task_item in self.task_list:
+                    if src_dir in task_item and dst_dir in task_item and src_path in task_item:
+                        logger.info(f"文件【{item_name}】在未完成的任务列表中，跳过复制")
+                        return True
                 # 检查目标文件是否存在
                 if not self.is_path_exists(dst_path):
                     logger.info(f"复制文件: {item_name}")
