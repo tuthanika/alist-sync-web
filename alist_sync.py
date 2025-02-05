@@ -130,7 +130,7 @@ class AlistSync:
     def login(self) -> bool:
         """登录并获取token"""
         # 如果已有token，直接返回True
-        if self.get_setting():
+        if self.token and self.get_setting():
             return True
 
         # 否则使用用户名密码登录
@@ -271,7 +271,6 @@ class AlistSync:
                 self._directory_operation("remove", dir=remove_dir, names=[remove_names])
                 logger.info(f"删除空文件夹【{src_dir}】成功")
                 self._remove_empty_folders(base_dir, remove_dir)
-                # alist_sync.remove_empty_directory(src_dir.strip())
 
     def _copy_item(self, src_dir: str, dst_dir: str, item_name: str) -> bool:
         """复制文件或目录"""
@@ -571,7 +570,7 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
     if exclude_dirs:
         exclude_list = exclude_dirs.split(',')
     else:
-        exclude_dirs = os.environ.get("EXCLUDE_DIRS")
+        exclude_dirs = os.environ.get("EXCLUDE_DIRS", "")
         exclude_list = exclude_dirs.split(',')
 
     if not base_url:
