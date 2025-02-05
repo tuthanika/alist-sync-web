@@ -188,7 +188,7 @@ ql raw https://github.com/xjxjin/alist-sync/raw/main/alist-sync-ql.py
 
 ### v1.0.9
 - 2025-02-05
-- 新增文件移动功能，由【kuke2733】小哥提供
+- 新增文件移动功能，由【[kuke2733](https://github.com/kuke2733)】小哥提供
 - 新增版本号展示
 - 执行前会重新执行失败任务
 - 执行中排除已创建复制任务文件
@@ -274,6 +274,16 @@ ql raw https://github.com/xjxjin/alist-sync/raw/main/alist-sync-ql.py
 - 令牌从 Alist 的 管理-设置-其他 获取，获取后不要重置令牌
 - 有其他新增功能欢迎提交 Issue。
 - 文件同步填写全目录，参照最后面图片
+- 如果无法获取docker镜像，可以参考以下脚本换源，国内执行如下代码
+```bash
+bash <(curl -sSL https://gitee.com/xjxjin/scripts/raw/main/check_docker_registry.sh)
+```
+- 国际执行如下代码
+```bash
+bash <(curl -sSL https://github.com/xjxjin/scripts/raw/main/check_docker_registry.sh)
+```
+
+
 ## License
 
 MIT License
@@ -284,6 +294,9 @@ MIT License
 
 ## 文件同步
 <img src="https://raw.githubusercontent.com/xjxjin/alist-sync/main/static/images/文件同步.png" width="700" alt="文件同步">
+
+## 文件移动
+<img src="https://raw.githubusercontent.com/xjxjin/alist-sync/main/static/images/文件移动.png" width="700" alt="文件移动">
 
 ## 令牌获取
 <img src="https://raw.githubusercontent.com/xjxjin/alist-sync/main/static/images/令牌.png" width="700" alt="令牌获取">

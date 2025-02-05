@@ -251,7 +251,29 @@ class AlistSync:
         logger.error("删除空文件夹失败")
         return False
 
-    def copy_item(self, src_dir: str, dst_dir: str, item_name: str) -> bool:
+    # 递归删除空文件夹
+    def _remove_empty_folders(self, base_dir: str, src_dir: str):
+        if base_dir in src_dir and self.is_path_exists(src_dir):
+            src_contents = self.get_directory_contents(src_dir)
+            if src_contents:
+                for item in src_contents:
+                    if item.get('is_dir', False):
+                        name = item.get('name', '未知项目')
+                        src_path = f"{src_dir}/{name}"
+                        self._remove_empty_folders(base_dir, src_path)
+            else:
+                # 文件移动的情况下删除空文件夹
+                # 找到最后一个 / 的索引
+                last_slash_index = src_dir.rfind('/')
+                # 分割字符串
+                remove_dir = src_dir[:last_slash_index]
+                remove_names = src_dir[last_slash_index + 1:]
+                self._directory_operation("remove", dir=remove_dir, names=[remove_names])
+                logger.info(f"删除空文件夹【{src_dir}】成功")
+                self._remove_empty_folders(base_dir, remove_dir)
+                # alist_sync.remove_empty_directory(src_dir.strip())
+
+    def _copy_item(self, src_dir: str, dst_dir: str, item_name: str) -> bool:
         """复制文件或目录"""
         response = self._directory_operation("copy",
                                              src_dir=src_dir,
@@ -263,7 +285,7 @@ class AlistSync:
         logger.error("文件复制失败")
         return False
 
-    def move_item(self, src_dir: str, dst_dir: str, item_name: str) -> bool:
+    def _move_item(self, src_dir: str, dst_dir: str, item_name: str) -> bool:
         """移动文件或目录"""
         response = self._directory_operation("move",
                                              src_dir=src_dir,
@@ -312,6 +334,10 @@ class AlistSync:
                 logger.error(f"源目录【{src_dir}】不存在，停止同步")
                 return False
             result = self._recursive_copy(src_dir, dst_dir)
+            # 递归删除空文件夹
+            if self.move_file_action:
+                self._remove_empty_folders(src_dir, src_dir)
+
             logger.info(f"目录同步完成 - 源目录: {src_dir}, 目标目录: {dst_dir}, 结果: {'成功' if result else '失败'}")
             return result
         except Exception as e:
@@ -375,7 +401,7 @@ class AlistSync:
                             logger.info(f"创建回收站目录: {trash_dir}")
                             self.create_directory(trash_dir)
                         logger.info(f"移动到回收站: {name}")
-                        self.move_item(dst_dir, trash_dir, name)
+                        self._move_item(dst_dir, trash_dir, name)
                 else:  # delete
                     logger.info(f"处理同步删除 - 目录: {dst_dir}")
                     logger.info(f"处理删除项目: {name}")
@@ -448,7 +474,7 @@ class AlistSync:
                 # 检查目标文件是否存在
                 if not self.is_path_exists(dst_path):
                     logger.info(f"复制文件: {item_name}")
-                    return self.copy_item(src_dir, dst_dir, item_name)
+                    return self._copy_item(src_dir, dst_dir, item_name)
                 else:
                     # 获取源文件和目标文件信息
                     src_size = item.get("size")
@@ -465,10 +491,10 @@ class AlistSync:
                         logger.info(f"文件【{item_name}】已存在且大小相同，跳过复制")
                         if self.move_file_action:
                             if not self._directory_operation("remove", dir=src_dir, names=[item_name]):
-                                logger.error(f"删除源文件失败: {src_dir}")
+                                logger.error(f"删除源文件失败: {src_path}")
                                 return False
                             else:
-                                logger.error(f"删除源文件: {src_dir}")
+                                logger.info(f"删除源文件成功: {src_path}")
                                 return True
                         else:
                             return True
@@ -495,7 +521,7 @@ class AlistSync:
                                 logger.error(f"删除目标文件失败: {dst_path}")
                                 return False
                             # 复制新文件
-                            return self.copy_item(src_dir, dst_dir, item_name)
+                            return self._copy_item(src_dir, dst_dir, item_name)
         except Exception as e:
             logger.error(f"复制项目时发生错误: {str(e)}")
             return False
@@ -592,10 +618,6 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
             logger.info(f"")
             i += 1
             alist_sync.sync_directories(src_dir.strip(), dst_dir.strip())
-
-        # 文件移动的情况下删除空文件夹
-        if move_file_action:
-            alist_sync.remove_empty_directory(src_dir.strip())
 
         logger.info("所有同步任务执行完成")
     except Exception as e:
