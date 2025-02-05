@@ -80,7 +80,8 @@ def parse_time_and_adjust_utc(date_str: str) -> datetime:
 
 class AlistSync:
     def __init__(self, base_url: str, username: str = None, password: str = None, token: str = None,
-                 sync_delete_action: str = "none"):
+                 sync_delete_action: str = "none", exclude_list: List[str] = None, move_file_action: bool = False,
+                 task_list: List[str] = None):
         """初始化AlistSync类"""
         self.base_url = base_url
         self.username = username
@@ -89,6 +90,9 @@ class AlistSync:
         self.sync_delete_action = sync_delete_action.lower()
         self.sync_delete = self.sync_delete_action in ["move", "delete"]
         self.connection = self._create_connection()
+        self.task_list = task_list
+        self.exclude_list = exclude_list
+        self.move_file_action = move_file_action
 
     def _create_connection(self) -> Union[http.client.HTTPConnection, http.client.HTTPSConnection]:
         """创建HTTP(S)连接"""
@@ -142,6 +146,7 @@ class AlistSync:
         response = self._make_request("POST", "/api/auth/login", headers, payload)
         if response and response.get("data", {}).get("token"):
             self.token = response["data"]["token"]
+            logger.info("令牌验证成功")
             return True
         logger.error("获取token失败")
         return False
@@ -159,10 +164,12 @@ class AlistSync:
             for item in response["data"]:
                 if item["key"] == "token":
                     token_value = item["value"]
+                    logger.info("令牌验证成功")
                     break
             if self.token == token_value:
+                logger.info("令牌验证成功")
                 return True
-        logger.error("令牌填写错误")
+        logger.info("令牌验证失败")
         return False
 
     def _directory_operation(self, operation: str, **kwargs) -> Optional[Dict]:
@@ -195,9 +202,25 @@ class AlistSync:
         path = f"/api/admin/task/{operation}"
         return self._make_request(method, path, headers, payload)
 
-    def get_copy_task_undone(self) -> List[Dict]:
+    def get_copy_task_undone(self):
         """获取未完成的复制任务"""
         response = self._task_operation("GET", "copy/undone")
+        name_list = []
+        if response and response.get("data", []):
+            for item in response["data"]:
+                name = item["name"]
+                try:
+                    result = name.replace("](", "")
+                    name_list.append(result)
+                except IndexError:
+                    print(f"字符串 '{name}' 未找到匹配的切分字符串。")
+        self.task_list = name_list
+        return True
+        # return name_list
+
+    def get_copy_task_retry_failed(self) -> List[Dict]:
+        """获取已完成的复制任务"""
+        response = self._task_operation("POST", "copy/retry_failed")
         return response.get("data", []) if response else []
 
     def get_copy_task_done(self) -> List[Dict]:
@@ -275,28 +298,30 @@ class AlistSync:
         logger.error("获取存储列表失败")
         return []
 
-    def sync_directories(self, src_dir: str, dst_dir: str, exclude_dirs: str = None, move_file: bool = False) -> bool:
+    def sync_directories(self, src_dir: str, dst_dir: str) -> bool:
         """同步两个目录"""
         try:
+
+            # 重试已失败任务
+            self.get_copy_task_retry_failed()
+            # 获取正在运行任务
+            self.get_copy_task_undone()
+
             logger.info(f"开始同步目录 - 源目录: {src_dir}, 目标目录: {dst_dir}")
             if not self.is_path_exists(src_dir):
                 logger.error(f"源目录【{src_dir}】不存在，停止同步")
                 return False
-            if not self.is_path_exists(dst_dir):
-                logger.info(f"目标目录不存在，创建目录: {dst_dir}")
-                if not self.create_directory(dst_dir):
-                    return False
-            result = self._recursive_copy(src_dir, dst_dir, exclude_dirs, move_file)
+            result = self._recursive_copy(src_dir, dst_dir)
             logger.info(f"目录同步完成 - 源目录: {src_dir}, 目标目录: {dst_dir}, 结果: {'成功' if result else '失败'}")
             return result
         except Exception as e:
             logger.error(f"同步目录失败: {str(e)}")
             return False
 
-    def _recursive_copy(self, src_dir: str, dst_dir: str, exclude_dirs: str = None, move_file: bool = False) -> bool:
+    def _recursive_copy(self, src_dir: str, dst_dir: str) -> bool:
         """递归复制目录内容"""
         try:
-            if src_dir == exclude_dirs:
+            if src_dir in self.exclude_list:
                 logger.info(f"排除目录: {src_dir}, 跳过同步")
                 return True
             else:
@@ -310,7 +335,7 @@ class AlistSync:
                     self._handle_sync_delete(src_dir, dst_dir, src_contents)
                 if src_contents:
                     for item in src_contents:
-                        if not self._copy_item_with_check(src_dir, dst_dir, item, exclude_dirs, move_file):
+                        if not self._copy_item_with_check(src_dir, dst_dir, item):
                             logger.error(f"复制项目失败: {item.get('name', '未知项目')}")
                             return False
                     logger.info(f"递归复制完成 - 源目录: {src_dir}, 目标目录: {dst_dir}")
@@ -383,10 +408,8 @@ class AlistSync:
             return response.get("data", {})
         return None
 
-    def _copy_item_with_check(self, src_dir: str, dst_dir: str, item: Dict, exclude_dirs: str = None,
-                              move_file: bool = False) -> bool:
+    def _copy_item_with_check(self, src_dir: str, dst_dir: str, item: Dict) -> bool:
         """复制项目并进行检查"""
-        undone_task = None
         try:
             item_name = item.get('name')
             if not item_name:
@@ -394,39 +417,38 @@ class AlistSync:
                 return False
 
             logger.info(f"处理项目: {item_name}")
-            if src_dir == exclude_dirs:
+            if src_dir in self.exclude_list:
                 logger.info(f"排除目录: {src_dir}, 跳过同步")
                 return True
 
+            # 处理文件
+            src_path = f"{src_dir}/{item_name}".replace('//', '/')
+            dst_path = f"{dst_dir}/{item_name}".replace('//', '/')
+
+            # 检查是否在未完成的任务列表中，如果存在，则跳过
+            for task_item in self.task_list:
+                if src_dir in task_item and dst_dir in task_item and src_path in task_item:
+                    logger.info(f"文件【{item_name}】在未完成的任务列表中，跳过复制")
+                    return True
+
             # 如果是目录，递归处理
             if item.get('is_dir', False):
-                src_subdir = f"{src_dir}/{item_name}".replace('//', '/')
-                dst_subdir = f"{dst_dir}/{item_name}".replace('//', '/')
 
                 # 确保目标子目录存在
-                if not self.is_path_exists(dst_subdir):
-                    logger.info(f"创建目标子目录: {dst_subdir}")
-                    if not self.create_directory(dst_subdir):
+                if not self.is_path_exists(dst_path):
+                    logger.info(f"创建目标子目录: {dst_path}")
+                    if not self.create_directory(dst_path):
                         return False
                 else:
-                    logger.info(f"文件夹【{dst_subdir}】已存在，跳过创建")
+                    logger.info(f"文件夹【{dst_path}】已存在，跳过创建")
 
                 # 递归复制子目录
-                return self._recursive_copy(src_subdir, dst_subdir, exclude_dirs, move_file)
+                return self._recursive_copy(src_path, dst_path)
             else:
-                # 处理文件
-                dst_path = f"{dst_dir}/{item_name}".replace('//', '/')
                 # 检查目标文件是否存在
                 if not self.is_path_exists(dst_path):
-                    # 检查是否在未完成的任务列表中，如果存在，则跳过
-                    undone_task = self.get_copy_task_undone()
-                    for task in undone_task:
-                        if re.search(re.escape(item_name), task.get("name")):
-                            logger.info(f"文件【{item_name}】在未完成的任务列表中，跳过复制")
-                            return True
-                    else:
-                        logger.info(f"复制文件: {item_name}")
-                        return self.copy_item(src_dir, dst_dir, item_name)
+                    logger.info(f"复制文件: {item_name}")
+                    return self.copy_item(src_dir, dst_dir, item_name)
                 else:
                     # 获取源文件和目标文件信息
                     src_size = item.get("size")
@@ -441,7 +463,7 @@ class AlistSync:
                     # 比较文件大小
                     if src_size == dst_size:
                         logger.info(f"文件【{item_name}】已存在且大小相同，跳过复制")
-                        if move_file:
+                        if self.move_file_action:
                             if not self._directory_operation("remove", dir=src_dir, names=[item_name]):
                                 logger.error(f"删除源文件失败: {src_dir}")
                                 return False
@@ -457,13 +479,7 @@ class AlistSync:
 
                         if src_modified and dst_modified and dst_modified > src_modified:
                             logger.info(f"文件【{item_name}】目标文件修改时间晚于源文件，跳过复制")
-                            if move_file:
-                                # 检查是否在未完成的任务列表中，如果存在，则跳过删除
-                                for task in undone_task:
-                                    if re.search(re.escape(item_name), task.get("name")):
-                                        logger.info(f"文件【{item_name}】在未完成的任务列表中，跳过复制")
-                                        return True
-
+                            if self.move_file_action:
                                 if not self._directory_operation("remove", dir=src_dir, names=[item_name]):
                                     logger.error(f"删除源文件失败: {src_dir}")
                                     return False
@@ -513,18 +529,24 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
     password = os.environ.get("PASSWORD")
     token = os.environ.get("TOKEN")  # 添加token环境变量
 
+    # 是否删除目标目录多余文件
     if sync_del_action:
         sync_delete_action = sync_del_action
     else:
         sync_delete_action = os.environ.get("SYNC_DELETE_ACTION", "none")
 
+    # 是否删除源目录
     if move_file:
         move_file_action = move_file
     else:
         move_file_action = os.environ.get("MOVE_FILE", "false").lower() == "true"
 
-    if not exclude_dirs:
+    # 排除目录
+    if exclude_dirs:
+        exclude_list = exclude_dirs.split(',')
+    else:
         exclude_dirs = os.environ.get("EXCLUDE_DIRS")
+        exclude_list = exclude_dirs.split(',')
 
     if not base_url:
         logger.error("BASE_URL环境变量未设置")
@@ -535,10 +557,11 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
         logger.error("需要设置TOKEN或者同时设置USERNAME和PASSWORD")
         return
 
-    logger.info(f"配置信息 - URL: {base_url}, 用户名: {username}, 删除动作: {sync_delete_action}")
+    logger.info(
+        f"配置信息 - URL: {base_url}, 用户名: {username}, 删除动作: {sync_delete_action}, 删除源目录: {move_file_action}")
 
     # 创建AlistSync实例时添加token参数
-    alist_sync = AlistSync(base_url, username, password, token, sync_delete_action)
+    alist_sync = AlistSync(base_url, username, password, token, sync_delete_action, exclude_list, move_file_action)
 
     try:
         # 获取同步目录对
@@ -568,7 +591,7 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
             logger.info(f"")
             logger.info(f"")
             i += 1
-            alist_sync.sync_directories(src_dir.strip(), dst_dir.strip(), exclude_dirs, move_file_action)
+            alist_sync.sync_directories(src_dir.strip(), dst_dir.strip())
 
         # 文件移动的情况下删除空文件夹
         if move_file_action:
