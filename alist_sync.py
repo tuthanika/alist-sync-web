@@ -135,7 +135,7 @@ class AlistSync:
 
         # 否则使用用户名密码登录
         if not self.username or not self.password:
-            logger.error("未提供token或用户名密码")
+            logger.error("token或用户名密码不正确")
             return False
 
         payload = json.dumps({"username": self.username, "password": self.password})
@@ -450,8 +450,6 @@ class AlistSync:
             src_path = f"{src_dir}/{item_name}".replace('//', '/')
             dst_path = f"{dst_dir}/{item_name}".replace('//', '/')
 
-
-
             # 如果是目录，递归处理
             if item.get('is_dir', False):
 
@@ -567,20 +565,24 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
     else:
         move_file_action = os.environ.get("MOVE_FILE", "false").lower() == "true"
 
+    # 删除源目录和删除多余目标目录无法同时生效
+    if move_file_action:
+        sync_delete_action = "none"
+
     # 排除目录
     if exclude_dirs:
-        exclude_list = exclude_dirs.split(',')
+        exclude_list = exclude_dirs.split(",")
     else:
         exclude_dirs = os.environ.get("EXCLUDE_DIRS", "")
-        exclude_list = exclude_dirs.split(',')
+        exclude_list = exclude_dirs.split(",")
 
     if not base_url:
-        logger.error("BASE_URL环境变量未设置")
+        logger.error("服务地址(BASE_URL)环境变量未设置")
         return
 
     # 修改验证逻辑
     if not token and not (username and password):
-        logger.error("需要设置TOKEN或者同时设置USERNAME和PASSWORD")
+        logger.error("需要设置令牌(TOKEN)或者同时设置用户名(USERNAME)和密码(PASSWORD)")
         return
 
     logger.info(
@@ -588,7 +590,10 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
 
     # 创建AlistSync实例时添加token参数
     alist_sync = AlistSync(base_url, username, password, token, sync_delete_action, exclude_list, move_file_action)
-
+    # 验证 token 是否正确
+    if not alist_sync.login():
+        logger.error("令牌或用户名密码不正确")
+        return False
     try:
         # 获取同步目录对
         dir_pairs_list = []

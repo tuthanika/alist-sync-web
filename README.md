@@ -188,12 +188,12 @@ ql raw https://github.com/xjxjin/alist-sync/raw/main/alist-sync-ql.py
 
 ## 更新记录
 
-### v1.0.9
-- 2025-02-05
+### v1.1.0
+- 2025-02-06
 - 新增文件移动功能，由【[kuke2733](https://github.com/kuke2733)】小哥提供
 - 新增版本号展示
 - 执行前会重新执行失败任务
-- 执行中排除已创建复制任务文件
+- 执行中排除已创建任务文件
 - 修复排除目录会在目标目录创建 bug
 
 ### v1.0.8
