@@ -2,7 +2,7 @@ version: '3'
 
 services:
   alist-sync-web:
-    image: xjxjin/alist-sync:latest
+    image: xjxjin/alist-sync:1.1.1
     container_name: alist-sync-web
     restart: unless-stopped
     ports:
