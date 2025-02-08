@@ -47,7 +47,7 @@ def import_from_file(module_name: str, file_path: str) -> Any:
 # 导入AlistSync类
 try:
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    alist_sync = import_from_file('alist_sync',os.path.join(current_dir, 'alist_sync.py'))
+    alist_sync = import_from_file('alist_sync', os.path.join(current_dir, 'alist_sync.py'))
     AlistSync = alist_sync.AlistSync
 except Exception as e:
     print(f"导入alist_sync.py失败: {e}")
@@ -872,17 +872,18 @@ def cleanup_backup_files(directory: str, days: int = 7):
     except Exception as e:
         logger.error(f"清理备份文件失败: {str(e)}")
 
+
 def get_current_version():
     """获取当前运行版本"""
     try:
         logger.info("开始获取当前版本...")
-        
+
         # 1. 尝试从环境变量直接获取
         version = os.getenv('VERSION')
         if version:
             logger.info(f"从环境变量获取到版本号: {version}")
             return version.lstrip('v')
-            
+
         # 2. 如果环境变量没有，则从VERSION文件获取
         version_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'VERSION')
         logger.info(f"尝试从VERSION文件获取版本号，文件路径: {version_file}")
@@ -893,12 +894,13 @@ def get_current_version():
                 return version.lstrip('v')
         else:
             logger.warning(f"VERSION文件不存在: {version_file}")
-        
+
         return "unknown"
-        
+
     except Exception as e:
         logger.error(f"获取当前版本失败: {e}")
         return "unknown"
+
 
 def get_latest_version():
     """获取最新版本号"""
@@ -908,7 +910,7 @@ def get_latest_version():
         parsed_url = urllib.parse.urlparse("https://api.github.com/repos/xjxjin/alist-sync/tags")
         logger.info(f"尝试从GitHub获取: {parsed_url.geturl()}")
         conn = http.client.HTTPSConnection(parsed_url.netloc)
-        
+
         try:
             headers = {
                 'User-Agent': 'Mozilla/5.0 (compatible; AlistSync/1.0;)'
@@ -916,7 +918,7 @@ def get_latest_version():
             conn.request("GET", parsed_url.path, headers=headers)
             response = conn.getresponse()
             logger.info(f"GitHub API响应状态码: {response.status}")
-            
+
             if response.status == 200:
                 data = json.loads(response.read().decode())
                 if data:
@@ -931,7 +933,7 @@ def get_latest_version():
                         logger.info(f"从GitHub获取到最新版本: {latest}")
                         return latest
                 logger.warning("GitHub返回数据中没有有效的版本标签")
-            
+
             # 如果从 GitHub 获取失败，尝试从 Gitee 获取
             logger.info("从GitHub获取失败，尝试从Gitee获取...")
             parsed_url = urllib.parse.urlparse("https://gitee.com/api/v5/repos/xjxjin/alist-sync/tags")
@@ -940,7 +942,7 @@ def get_latest_version():
             conn.request("GET", parsed_url.path, headers=headers)
             response = conn.getresponse()
             logger.info(f"Gitee API响应状态码: {response.status}")
-            
+
             if response.status == 200:
                 data = json.loads(response.read().decode())
                 if data:
@@ -955,16 +957,17 @@ def get_latest_version():
                         logger.info(f"从Gitee获取到最新版本: {latest}")
                         return latest
                 logger.warning("Gitee返回数据中没有有效的版本标签")
-            
+
             logger.warning("无法从GitHub和Gitee获取最新版本")
             return "unknown"
-            
+
         finally:
             conn.close()
-            
+
     except Exception as e:
         logger.error(f"获取最新版本失败: {e}")
         return "unknown"
+
 
 # 添加新的API路由
 @app.route('/api/version', methods=['GET'])
@@ -985,6 +988,7 @@ def get_version():
             'code': 500,
             'message': f"获取版本信息失败: {str(e)}"
         })
+
 
 # 主函数
 if __name__ == '__main__':

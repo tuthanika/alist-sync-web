@@ -1992,10 +1992,10 @@
                 if(res.code === 200) {
                     $('#currentVersion').text(res.data.current_version);
                     $('#latestVersion').text(res.data.latest_version);
-                    
+
                     // 检查是否有新版本
-                    if(res.data.current_version !== 'unknown' && 
-                       res.data.latest_version !== 'unknown' && 
+                    if(res.data.current_version !== 'unknown' &&
+                       res.data.latest_version !== 'unknown' &&
                        res.data.current_version !== res.data.latest_version) {
                         $('#latestVersion').css('color', '#ff5722')
                             .attr('title', '发现新版本');
