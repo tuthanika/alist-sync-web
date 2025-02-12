@@ -166,16 +166,22 @@ jobs:
           # 设置执行权限
           chmod +x alist-sync-web alist-sync
           
-          # 创建压缩文件到 releases 目录
-          mkdir -p ../../releases
-          tar -czf "../../releases/alist-sync-${{ github.ref_name }}-linux-${ARCH}.tar.gz" ./*
-          zip -r "../../releases/alist-sync-${{ github.ref_name }}-linux-${ARCH}.zip" ./*
+          # 创建压缩文件
+          cd ..
+          zip -r "alist-sync-${{ github.ref_name }}-linux-${ARCH}.zip" "linux-${ARCH}/"
+          tar -czf "alist-sync-${{ github.ref_name }}-linux-${ARCH}.tar.gz" "linux-${ARCH}/"
 
-      - name: Upload artifacts
+      - name: Upload Linux Zip
         uses: actions/upload-artifact@v4
         with:
-          name: releases
-          path: dist/releases/*
+          name: alist-sync-${{ github.ref_name }}-linux-${{ matrix.arch }}.zip
+          path: dist/alist-sync-${{ github.ref_name }}-linux-${{ matrix.arch }}.zip
+
+      - name: Upload Linux Tar
+        uses: actions/upload-artifact@v4
+        with:
+          name: alist-sync-${{ github.ref_name }}-linux-${{ matrix.arch }}.tar.gz
+          path: dist/alist-sync-${{ github.ref_name }}-linux-${{ matrix.arch }}.tar.gz
 
   build-windows:
     needs: docker-build
@@ -228,10 +234,10 @@ jobs:
           Copy-Item -Path "dist\alist-sync.exe" -Destination $PlatformDir
           Compress-Archive -Path "$PlatformDir\*" -DestinationPath "dist\alist-sync-${{ github.ref_name }}-windows-$Arch.zip" -Force
 
-      - name: Upload artifact
+      - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-${{ matrix.arch }}
+          name: alist-sync-${{ github.ref_name }}-windows-${{ matrix.arch }}.zip
           path: dist/alist-sync-${{ github.ref_name }}-windows-${{ matrix.arch }}.zip
 
   build-macos:
@@ -313,13 +319,13 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: releases
+          path: dist
           merge-multiple: true
 
       - name: List artifacts
         run: |
-          ls -la releases/
-          find releases/ -type f
+          ls -la dist/
+          find dist/ -type f
 
       - name: Generate Release Body
         id: release_body
@@ -341,7 +347,10 @@ jobs:
           draft: false
           prerelease: false
           body: ${{ steps.release_body.outputs.RELEASE_BODY }}
-          files: releases/*
+          files: |
+            dist/alist-sync-${{ github.ref_name }}-linux-*.zip
+            dist/alist-sync-${{ github.ref_name }}-linux-*.tar.gz
+            dist/alist-sync-${{ github.ref_name }}-windows-*.zip
 
       - name: Sync to Gitee
         uses: Yikun/hub-mirror-action@master
