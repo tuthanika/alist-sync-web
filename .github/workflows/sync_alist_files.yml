@@ -160,24 +160,22 @@ jobs:
           # 创建数据目录
           mkdir -p "$PLATFORM_DIR/data/config" "$PLATFORM_DIR/data/log"
           
+          # 创建发布文件
           cd "$PLATFORM_DIR"
           
           # 设置执行权限
           chmod +x alist-sync-web alist-sync
           
-          # 创建 tar.gz 文件（包含数据目录结构）
-          tar -czf "../../alist-sync-${{ github.ref_name }}-linux-${ARCH}.tar.gz" ./*
-          
-          # 创建 zip 文件（包含数据目录结构）
-          zip -r "../../alist-sync-${{ github.ref_name }}-linux-${ARCH}.zip" ./*
+          # 创建压缩文件到 releases 目录
+          mkdir -p ../../releases
+          tar -czf "../../releases/alist-sync-${{ github.ref_name }}-linux-${ARCH}.tar.gz" ./*
+          zip -r "../../releases/alist-sync-${{ github.ref_name }}-linux-${ARCH}.zip" ./*
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: linux-${{ matrix.arch }}
-          path: |
-            dist/alist-sync-${{ github.ref_name }}-linux-${{ matrix.arch }}.tar.gz
-            dist/alist-sync-${{ github.ref_name }}-linux-${{ matrix.arch }}.zip
+          name: releases
+          path: dist/releases/*
 
   build-windows:
     needs: docker-build
@@ -306,7 +304,6 @@ jobs:
           path: dist/alist-sync-${{ github.ref_name }}-darwin-${{ matrix.arch }}.zip
 
   create-release:
-#    needs: [build-linux, build-windows, build-macos]
     needs: [build-linux, build-windows]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
@@ -316,12 +313,13 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          path: releases
           merge-multiple: true
 
       - name: List artifacts
         run: |
-          ls -R artifacts/
+          ls -la releases/
+          find releases/ -type f
 
       - name: Generate Release Body
         id: release_body
@@ -343,9 +341,7 @@ jobs:
           draft: false
           prerelease: false
           body: ${{ steps.release_body.outputs.RELEASE_BODY }}
-          files: |
-            artifacts/*.zip
-            artifacts/*.tar.gz
+          files: releases/*
 
       - name: Sync to Gitee
         uses: Yikun/hub-mirror-action@master
