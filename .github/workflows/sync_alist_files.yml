@@ -215,10 +215,13 @@ jobs:
         include:
           - arch: amd64
             python-arch: x64
-          - arch: arm64
-            python-arch: arm64
     steps:
       - uses: actions/checkout@v4
+      
+      - name: Install system dependencies
+        run: |
+          brew install gettext
+          brew link gettext --force
       
       - name: Set up Python
         uses: actions/setup-python@v4
