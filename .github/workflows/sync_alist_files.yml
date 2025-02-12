@@ -117,34 +117,39 @@ jobs:
           # 复制静态文件
           cp -r static templates README.md "$PLATFORM_DIR/"
           
-          # 构建可执行文件
-          ARCHITECTURE=$([ "$ARCH" = "386" ] && echo "32bit" || echo "64bit")
-          
           # Web 版本
           pyinstaller --clean \
             --name "alist-sync-web" \
             --add-data "static:static" \
             --add-data "templates:templates" \
-            --target-architecture $ARCHITECTURE \
+            --add-data "alist_sync.py:." \
+            --onefile \
             alist-sync-web.py
           
           # CLI 版本
           pyinstaller --clean \
             --name "alist-sync" \
-            --target-architecture $ARCHITECTURE \
+            --onefile \
             alist_sync.py
           
           # 复制构建文件并打包
-          cp -r dist/alist-sync-web/* "$PLATFORM_DIR/"
-          cp -r dist/alist-sync/* "$PLATFORM_DIR/"
+          cp "dist/alist-sync-web" "$PLATFORM_DIR/"
+          cp "dist/alist-sync" "$PLATFORM_DIR/"
           cd "$PLATFORM_DIR"
+          
+          # 创建 zip 文件
           zip -r "../../alist-sync-${{ github.ref_name }}-linux-${ARCH}.zip" ./*
+          
+          # 创建 tar.gz 文件
+          tar -czf "../../alist-sync-${{ github.ref_name }}-linux-${ARCH}.tar.gz" ./*
 
-      - name: Upload artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-${{ matrix.arch }}
-          path: dist/alist-sync-${{ github.ref_name }}-linux-${{ matrix.arch }}.zip
+          path: |
+            dist/alist-sync-${{ github.ref_name }}-linux-${{ matrix.arch }}.zip
+            dist/alist-sync-${{ github.ref_name }}-linux-${{ matrix.arch }}.tar.gz
 
   build-windows:
     needs: docker-build
@@ -176,28 +181,25 @@ jobs:
           # 复制静态文件
           Copy-Item -Path "static", "templates", "README.md" -Destination $PlatformDir -Recurse
           
-          # 设置架构
-          $PyinstallerArch = if ($Arch -eq "386") { "win32" } elseif ($Arch -eq "amd64") { "win64" } else { "arm64" }
-          
           # Web 版本
           pyinstaller --clean `
             --name "alist-sync-web" `
             --add-data "static;static" `
             --add-data "templates;templates" `
+            --add-data "alist_sync.py;." `
+            --onefile `
             --windowed `
-            --target-architecture $PyinstallerArch `
             alist-sync-web.py
           
           # CLI 版本
           pyinstaller --clean `
             --name "alist-sync" `
-            --target-architecture $PyinstallerArch `
+            --onefile `
             alist_sync.py
           
           # 复制构建文件并打包
-          Remove-Item -Path "$PlatformDir\*" -Recurse -Force
-          Copy-Item -Path "dist\alist-sync-web\*" -Destination $PlatformDir -Recurse
-          Copy-Item -Path "dist\alist-sync\*" -Destination $PlatformDir -Recurse -Force
+          Copy-Item -Path "dist\alist-sync-web.exe" -Destination $PlatformDir
+          Copy-Item -Path "dist\alist-sync.exe" -Destination $PlatformDir
           Compress-Archive -Path "$PlatformDir\*" -DestinationPath "dist\alist-sync-${{ github.ref_name }}-windows-$Arch.zip" -Force
 
       - name: Upload artifact
@@ -315,6 +317,7 @@ jobs:
           body: ${{ steps.release_body.outputs.RELEASE_BODY }}
           files: |
             artifacts/*.zip
+            artifacts/*.tar.gz
 
       - name: Sync to Gitee
         uses: Yikun/hub-mirror-action@master
