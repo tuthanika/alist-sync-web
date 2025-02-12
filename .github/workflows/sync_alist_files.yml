@@ -127,6 +127,15 @@ jobs:
           PLATFORM_DIR="dist/linux-${ARCH}"
           mkdir -p "$PLATFORM_DIR"
           
+          # 设置目标架构
+          if [ "$ARCH" = "386" ]; then
+            PYINSTALLER_ARCH="i386"
+          elif [ "$ARCH" = "amd64" ]; then
+            PYINSTALLER_ARCH="x86_64"
+          elif [ "$ARCH" = "arm64" ]; then
+            PYINSTALLER_ARCH="aarch64"
+          fi
+          
           # Web 版本
           pyinstaller --clean \
             --name "alist-sync-web" \
@@ -135,6 +144,7 @@ jobs:
             --add-data "alist_sync.py:." \
             --onefile \
             --noupx \
+            --target-arch $PYINSTALLER_ARCH \
             --hidden-import=markupsafe \
             --hidden-import=jinja2 \
             --hidden-import=flask \
@@ -148,6 +158,7 @@ jobs:
             --name "alist-sync" \
             --onefile \
             --noupx \
+            --target-arch $PYINSTALLER_ARCH \
             alist_sync.py
           
           # 复制可执行文件到平台目录
