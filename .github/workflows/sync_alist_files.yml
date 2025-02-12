@@ -98,28 +98,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      # 安装系统依赖
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            gcc \
-            musl-dev \
-            python3-dev \
-            libffi-dev \
-            libssl-dev \
-            upx
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
       
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Build executables
         run: |
@@ -127,39 +110,45 @@ jobs:
           PLATFORM_DIR="dist/linux-${ARCH}"
           mkdir -p "$PLATFORM_DIR"
           
-          # 设置目标架构
+          # 设置 Docker 架构
           if [ "$ARCH" = "386" ]; then
-            PYINSTALLER_ARCH="i386"
+            DOCKER_PLATFORM="linux/386"
           elif [ "$ARCH" = "amd64" ]; then
-            PYINSTALLER_ARCH="x86_64"
+            DOCKER_PLATFORM="linux/amd64"
           elif [ "$ARCH" = "arm64" ]; then
-            PYINSTALLER_ARCH="aarch64"
+            DOCKER_PLATFORM="linux/arm64"
           fi
           
-          # Web 版本
-          pyinstaller --clean \
-            --name "alist-sync-web" \
-            --add-data "static:static" \
-            --add-data "templates:templates" \
-            --add-data "alist_sync.py:." \
-            --onefile \
-            --noupx \
-            --target-arch $PYINSTALLER_ARCH \
-            --hidden-import=markupsafe \
-            --hidden-import=jinja2 \
-            --hidden-import=flask \
-            --hidden-import=werkzeug \
-            --hidden-import=click \
-            --hidden-import=itsdangerous \
-            alist-sync-web.py
-          
-          # CLI 版本
-          pyinstaller --clean \
-            --name "alist-sync" \
-            --onefile \
-            --noupx \
-            --target-arch $PYINSTALLER_ARCH \
-            alist_sync.py
+          # 使用 Docker 构建可执行文件
+          docker run --rm --platform $DOCKER_PLATFORM \
+            -v $(pwd):/src \
+            -w /src \
+            python:3.10-slim \
+            bash -c "
+              apt-get update && \
+              apt-get install -y gcc python3-dev libffi-dev libssl-dev upx && \
+              pip install --no-cache-dir -r requirements.txt && \
+              pip install --no-cache-dir pyinstaller && \
+              pyinstaller --clean \
+                --name alist-sync-web \
+                --add-data 'static:static' \
+                --add-data 'templates:templates' \
+                --add-data 'alist_sync.py:.' \
+                --onefile \
+                --noupx \
+                --hidden-import=markupsafe \
+                --hidden-import=jinja2 \
+                --hidden-import=flask \
+                --hidden-import=werkzeug \
+                --hidden-import=click \
+                --hidden-import=itsdangerous \
+                alist-sync-web.py && \
+              pyinstaller --clean \
+                --name alist-sync \
+                --onefile \
+                --noupx \
+                alist_sync.py
+            "
           
           # 复制可执行文件到平台目录
           cp "dist/alist-sync-web" "$PLATFORM_DIR/"
@@ -171,7 +160,6 @@ jobs:
           # 创建数据目录
           mkdir -p "$PLATFORM_DIR/data/config" "$PLATFORM_DIR/data/log"
           
-          # 创建发布文件
           cd "$PLATFORM_DIR"
           
           # 设置执行权限
