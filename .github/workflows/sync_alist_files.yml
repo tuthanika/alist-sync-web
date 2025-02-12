@@ -170,13 +170,14 @@ jobs:
         run: |
           $Arch = "${{ matrix.arch }}"
           $PlatformDir = "dist\windows-$Arch"
+          Remove-Item -Path $PlatformDir -Recurse -Force -ErrorAction SilentlyContinue
           mkdir -Force $PlatformDir
           
           # 复制静态文件
           Copy-Item -Path "static", "templates", "README.md" -Destination $PlatformDir -Recurse
           
           # 设置架构
-          $Architecture = if ($Arch -eq "386") { "32bit" } else { "64bit" }
+          $PyinstallerArch = if ($Arch -eq "386") { "win32" } elseif ($Arch -eq "amd64") { "win64" } else { "arm64" }
           
           # Web 版本
           pyinstaller --clean `
@@ -184,19 +185,20 @@ jobs:
             --add-data "static;static" `
             --add-data "templates;templates" `
             --windowed `
-            --target-architecture $Architecture `
+            --target-architecture $PyinstallerArch `
             alist-sync-web.py
           
           # CLI 版本
           pyinstaller --clean `
             --name "alist-sync" `
-            --target-architecture $Architecture `
+            --target-architecture $PyinstallerArch `
             alist_sync.py
           
           # 复制构建文件并打包
+          Remove-Item -Path "$PlatformDir\*" -Recurse -Force
           Copy-Item -Path "dist\alist-sync-web\*" -Destination $PlatformDir -Recurse
-          Copy-Item -Path "dist\alist-sync\*" -Destination $PlatformDir -Recurse
-          Compress-Archive -Path "$PlatformDir\*" -DestinationPath "dist\alist-sync-${{ github.ref_name }}-windows-$Arch.zip"
+          Copy-Item -Path "dist\alist-sync\*" -Destination $PlatformDir -Recurse -Force
+          Compress-Archive -Path "$PlatformDir\*" -DestinationPath "dist\alist-sync-${{ github.ref_name }}-windows-$Arch.zip" -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -233,18 +235,21 @@ jobs:
           # 复制静态文件
           cp -r static templates README.md "$PLATFORM_DIR/"
           
+          # 设置正确的架构参数
+          PYINSTALLER_ARCH=$([ "$ARCH" = "amd64" ] && echo "x86_64" || echo "arm64")
+          
           # Web 版本
           pyinstaller --clean \
             --name "alist-sync-web" \
             --add-data "static:static" \
             --add-data "templates:templates" \
-            --target-architecture 64bit \
+            --target-architecture $PYINSTALLER_ARCH \
             alist-sync-web.py
           
           # CLI 版本
           pyinstaller --clean \
             --name "alist-sync" \
-            --target-architecture 64bit \
+            --target-architecture $PYINSTALLER_ARCH \
             alist_sync.py
           
           # 复制构建文件并打包
@@ -270,11 +275,20 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: |
+          ls -R artifacts/
 
       - name: Generate Release Body
         id: release_body
         run: |
-          CONTENT=$(cat RELEASE.md)
+          if [ -f RELEASE.md ]; then
+            CONTENT=$(cat RELEASE.md)
+          else
+            CONTENT="Release ${{ github.ref_name }}"
+          fi
           echo "RELEASE_BODY<<EOF" >> "$GITHUB_OUTPUT"
           echo "$CONTENT" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
@@ -287,7 +301,8 @@ jobs:
           draft: false
           prerelease: false
           body: ${{ steps.release_body.outputs.RELEASE_BODY }}
-          files: artifacts/**/*.zip
+          files: |
+            artifacts/*.zip
 
       - name: Sync to Gitee
         uses: Yikun/hub-mirror-action@master
