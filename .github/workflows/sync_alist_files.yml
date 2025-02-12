@@ -97,6 +97,19 @@ jobs:
         arch: [386, amd64, arm64]
     steps:
       - uses: actions/checkout@v4
+      
+      # 安装系统依赖
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc \
+            musl-dev \
+            python3-dev \
+            libffi-dev \
+            libssl-dev \
+            upx
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -114,9 +127,6 @@ jobs:
           PLATFORM_DIR="dist/linux-${ARCH}"
           mkdir -p "$PLATFORM_DIR"
           
-          # 复制静态文件
-          cp -r static templates README.md "$PLATFORM_DIR/"
-          
           # Web 版本
           pyinstaller --clean \
             --name "alist-sync-web" \
@@ -124,32 +134,50 @@ jobs:
             --add-data "templates:templates" \
             --add-data "alist_sync.py:." \
             --onefile \
+            --noupx \
+            --hidden-import=markupsafe \
+            --hidden-import=jinja2 \
+            --hidden-import=flask \
+            --hidden-import=werkzeug \
+            --hidden-import=click \
+            --hidden-import=itsdangerous \
             alist-sync-web.py
           
           # CLI 版本
           pyinstaller --clean \
             --name "alist-sync" \
             --onefile \
+            --noupx \
             alist_sync.py
           
-          # 复制构建文件并打包
+          # 复制可执行文件到平台目录
           cp "dist/alist-sync-web" "$PLATFORM_DIR/"
           cp "dist/alist-sync" "$PLATFORM_DIR/"
+          
+          # 复制说明文件
+          cp README.md "$PLATFORM_DIR/"
+          
+          # 创建数据目录
+          mkdir -p "$PLATFORM_DIR/data/config" "$PLATFORM_DIR/data/log"
+          
           cd "$PLATFORM_DIR"
           
-          # 创建 zip 文件
-          zip -r "../../alist-sync-${{ github.ref_name }}-linux-${ARCH}.zip" ./*
+          # 设置执行权限
+          chmod +x alist-sync-web alist-sync
           
-          # 创建 tar.gz 文件
+          # 创建 tar.gz 文件（包含数据目录结构）
           tar -czf "../../alist-sync-${{ github.ref_name }}-linux-${ARCH}.tar.gz" ./*
+          
+          # 创建 zip 文件（包含数据目录结构）
+          zip -r "../../alist-sync-${{ github.ref_name }}-linux-${ARCH}.zip" ./*
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-${{ matrix.arch }}
           path: |
-            dist/alist-sync-${{ github.ref_name }}-linux-${{ matrix.arch }}.zip
             dist/alist-sync-${{ github.ref_name }}-linux-${{ matrix.arch }}.tar.gz
+            dist/alist-sync-${{ github.ref_name }}-linux-${{ matrix.arch }}.zip
 
   build-windows:
     needs: docker-build
