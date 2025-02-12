@@ -212,13 +212,19 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            python-arch: x64
+          - arch: arm64
+            python-arch: arm64
     steps:
       - uses: actions/checkout@v4
+      
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
+          architecture: ${{ matrix.python-arch }}
       
       - name: Install dependencies
         run: |
@@ -244,17 +250,19 @@ jobs:
             --add-data "static:static" \
             --add-data "templates:templates" \
             --target-architecture $PYINSTALLER_ARCH \
+            --onefile \
             alist-sync-web.py
           
           # CLI 版本
           pyinstaller --clean \
             --name "alist-sync" \
             --target-architecture $PYINSTALLER_ARCH \
+            --onefile \
             alist_sync.py
           
           # 复制构建文件并打包
-          cp -r dist/alist-sync-web/* "$PLATFORM_DIR/"
-          cp -r dist/alist-sync/* "$PLATFORM_DIR/"
+          cp "dist/alist-sync-web" "$PLATFORM_DIR/"
+          cp "dist/alist-sync" "$PLATFORM_DIR/"
           cd "$PLATFORM_DIR"
           zip -r "../../alist-sync-${{ github.ref_name }}-darwin-${ARCH}.zip" ./*
 
