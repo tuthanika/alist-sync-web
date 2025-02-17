@@ -40,6 +40,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -53,24 +54,10 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 添加登录阿里云镜像仓库
-      - name: Login to Aliyun Container Registry
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: docker/login-action@v3
-        with:
-          registry: registry.cn-hangzhou.aliyuncs.com  # 替换为你的阿里云镜像仓库地址
-          username: ${{ secrets.ALIYUN_USERNAME }}
-          password: ${{ secrets.ALIYUN_PASSWORD }}
-
       - name: Get version from tag
         if: startsWith(github.ref, 'refs/tags/')
         id: get_version
-        run: |
-          # 去掉版本号中的 'v' 前缀
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
-          # 为阿里云镜像准备标签
-          echo "ALIYUN_IMAGE=registry.cn-hangzhou.aliyuncs.com/${{ env.DOCKER_IMAGE }}:${VERSION}" >> $GITHUB_OUTPUT
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -78,267 +65,93 @@ jobs:
           context: .
           platforms: ${{ env.PLATFORMS }}
           push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ steps.meta.outputs.tags }}
-            ${{ startsWith(github.ref, 'refs/tags/') && steps.get_version.outputs.ALIYUN_IMAGE || '' }}
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
-          build-args: |
-            VERSION=${{ steps.get_version.outputs.VERSION }}
 
-  build-linux:
-    needs: docker-build
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        arch: [386, amd64, arm64]
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build executables
-        run: |
-          ARCH="${{ matrix.arch }}"
-          PLATFORM_DIR="dist/linux-${ARCH}"
-          mkdir -p "$PLATFORM_DIR"
-          
-          # 设置 Docker 架构
-          if [ "$ARCH" = "386" ]; then
-            DOCKER_PLATFORM="linux/386"
-          elif [ "$ARCH" = "amd64" ]; then
-            DOCKER_PLATFORM="linux/amd64"
-          elif [ "$ARCH" = "arm64" ]; then
-            DOCKER_PLATFORM="linux/arm64"
-          fi
-          
-          # 使用 Docker 构建可执行文件
-          docker run --rm --platform $DOCKER_PLATFORM \
-            -v $(pwd):/src \
-            -w /src \
-            python:3.10-slim \
-            bash -c "
-              apt-get update && \
-              apt-get install -y gcc python3-dev libffi-dev libssl-dev upx && \
-              pip install --no-cache-dir -r requirements.txt && \
-              pip install --no-cache-dir pyinstaller && \
-              pyinstaller --clean \
-                --name alist-sync-web \
-                --add-data 'static:static' \
-                --add-data 'templates:templates' \
-                --add-data 'alist_sync.py:.' \
-                --onefile \
-                --noupx \
-                --hidden-import=markupsafe \
-                --hidden-import=jinja2 \
-                --hidden-import=flask \
-                --hidden-import=werkzeug \
-                --hidden-import=click \
-                --hidden-import=itsdangerous \
-                alist-sync-web.py && \
-              pyinstaller --clean \
-                --name alist-sync \
-                --onefile \
-                --noupx \
-                alist_sync.py
-            "
-          
-          # 复制可执行文件到平台目录
-          cp "dist/alist-sync-web" "$PLATFORM_DIR/"
-          cp "dist/alist-sync" "$PLATFORM_DIR/"
-          
-          # 复制说明文件
-          cp README.md "$PLATFORM_DIR/"
-          
-          # 创建数据目录
-          mkdir -p "$PLATFORM_DIR/data/config" "$PLATFORM_DIR/data/log"
-          
-          cd "$PLATFORM_DIR"
-          
-          # 设置执行权限
-          chmod +x alist-sync-web alist-sync
-          
-          # 创建压缩文件
-          cd ..
-          zip -r "alist-sync-${{ github.ref_name }}-linux-${ARCH}.zip" "linux-${ARCH}/"
-          tar -czf "alist-sync-${{ github.ref_name }}-linux-${ARCH}.tar.gz" "linux-${ARCH}/"
-
-      - name: Upload Linux Zip
-        uses: actions/upload-artifact@v4
+      - name: Update Docker Hub Description
+        if: github.event_name != 'pull_request'
+        uses: peter-evans/dockerhub-description@v3
         with:
-          name: alist-sync-${{ github.ref_name }}-linux-${{ matrix.arch }}.zip
-          path: dist/alist-sync-${{ github.ref_name }}-linux-${{ matrix.arch }}.zip
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.DOCKER_IMAGE }}
+          readme-filepath: ./README.md
+          short-description: "Alist-Sync - A tool for syncing files between Alist storages"
 
-      - name: Upload Linux Tar
-        uses: actions/upload-artifact@v4
-        with:
-          name: alist-sync-${{ github.ref_name }}-linux-${{ matrix.arch }}.tar.gz
-          path: dist/alist-sync-${{ github.ref_name }}-linux-${{ matrix.arch }}.tar.gz
-
-  build-windows:
-    needs: docker-build
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: windows-latest
-    strategy:
-      matrix:
-        arch: [386, amd64, arm64]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-      
-      - name: Install dependencies
+      # 以下是新增的 Release 相关步骤
+      - name: Create Source Archive
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Build executables
-        run: |
-          $Arch = "${{ matrix.arch }}"
-          $PlatformDir = "dist\windows-$Arch"
-          Remove-Item -Path $PlatformDir -Recurse -Force -ErrorAction SilentlyContinue
-          mkdir -Force $PlatformDir
+          # 创建临时目录
+          TEMP_DIR="/tmp/alist-sync-release"
+          mkdir -p "$TEMP_DIR"
           
-          # 复制静态文件
-          Copy-Item -Path "static", "templates", "README.md" -Destination $PlatformDir -Recurse
+          # 定义要包含的文件列表
+          INCLUDE_FILES=(
+            "alist-sync-web.py"
+            "alist_sync.py"
+            "requirements.txt"
+            "Dockerfile"
+            "docker-compose.yml"
+            "README.md"
+            "static"
+            "templates"
+          )
           
-          # Web 版本
-          pyinstaller --clean `
-            --name "alist-sync-web" `
-            --add-data "static;static" `
-            --add-data "templates;templates" `
-            --add-data "alist_sync.py;." `
-            --onefile `
-            --windowed `
-            alist-sync-web.py
+          # 定义平台列表
+          PLATFORMS=(
+            "linux-386"
+            "linux-amd64"
+            "linux-arm-v6"
+            "linux-arm-v7"
+            "linux-arm64"
+            "linux-ppc64le"
+            "linux-s390x"
+          )
           
-          # CLI 版本
-          pyinstaller --clean `
-            --name "alist-sync" `
-            --onefile `
-            alist_sync.py
-          
-          # 复制构建文件并打包
-          Copy-Item -Path "dist\alist-sync-web.exe" -Destination $PlatformDir
-          Copy-Item -Path "dist\alist-sync.exe" -Destination $PlatformDir
-          Compress-Archive -Path "$PlatformDir\*" -DestinationPath "dist\alist-sync-${{ github.ref_name }}-windows-$Arch.zip" -Force
-
-      - name: Upload Windows Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: alist-sync-${{ github.ref_name }}-windows-${{ matrix.arch }}.zip
-          path: dist/alist-sync-${{ github.ref_name }}-windows-${{ matrix.arch }}.zip
-
-  build-macos:
-    needs: docker-build
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        include:
-          - arch: amd64
-            python-arch: x64
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install system dependencies
-        run: |
-          brew install gettext
-          brew link gettext --force
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-          architecture: ${{ matrix.python-arch }}
-      
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Build executables
-        run: |
-          ARCH="${{ matrix.arch }}"
-          PLATFORM_DIR="dist/darwin-${ARCH}"
-          mkdir -p "$PLATFORM_DIR"
-          
-          # 复制静态文件
-          cp -r static templates README.md "$PLATFORM_DIR/"
-          
-          # 设置正确的架构参数
-          PYINSTALLER_ARCH=$([ "$ARCH" = "amd64" ] && echo "x86_64" || echo "arm64")
-          
-          # Web 版本
-          pyinstaller --clean \
-            --name "alist-sync-web" \
-            --add-data "static:static" \
-            --add-data "templates:templates" \
-            --target-architecture $PYINSTALLER_ARCH \
-            --onefile \
-            alist-sync-web.py
-          
-          # CLI 版本
-          pyinstaller --clean \
-            --name "alist-sync" \
-            --target-architecture $PYINSTALLER_ARCH \
-            --onefile \
-            alist_sync.py
-          
-          # 复制构建文件并打包
-          cp "dist/alist-sync-web" "$PLATFORM_DIR/"
-          cp "dist/alist-sync" "$PLATFORM_DIR/"
-          cd "$PLATFORM_DIR"
-          zip -r "../../alist-sync-${{ github.ref_name }}-darwin-${ARCH}.zip" ./*
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: darwin-${{ matrix.arch }}
-          path: dist/alist-sync-${{ github.ref_name }}-darwin-${{ matrix.arch }}.zip
-
-  create-release:
-    needs: [build-linux, build-windows]
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-
-      - name: List artifacts
-        run: |
-          ls -la dist/
-          find dist/ -type f
+          # 为每个平台创建一个包
+          for platform in "${PLATFORMS[@]}"; do
+            # 创建平台特定的临时目录
+            PLATFORM_DIR="$TEMP_DIR/$platform"
+            mkdir -p "$PLATFORM_DIR"
+            
+            # 复制文件到平台目录
+            for item in "${INCLUDE_FILES[@]}"; do
+              if [ -e "$item" ]; then
+                cp -r "$item" "$PLATFORM_DIR/"
+              fi
+            done
+            
+            # 在平台目录中创建压缩包
+            cd "$PLATFORM_DIR"
+            
+            # 创建 ZIP 文件
+            zip -r "alist-sync-${{ github.ref_name }}-${platform}.zip" ./*
+            
+            # 创建 TAR.GZ 文件
+            tar --exclude='.[^/]*' -czf "alist-sync-${{ github.ref_name }}-${platform}.tar.gz" ./*
+            
+            # 移动压缩包到工作目录
+            mv "alist-sync-${{ github.ref_name }}-${platform}.zip" "$GITHUB_WORKSPACE/"
+            mv "alist-sync-${{ github.ref_name }}-${platform}.tar.gz" "$GITHUB_WORKSPACE/"
+          done
 
       - name: Generate Release Body
+        if: startsWith(github.ref, 'refs/tags/')
         id: release_body
         run: |
-          if [ -f RELEASE.md ]; then
-            CONTENT=$(cat RELEASE.md)
-          else
-            CONTENT="Release ${{ github.ref_name }}"
-          fi
+          # 将 release 内容保存到输出变量
+          CONTENT=$(cat RELEASE.md)
           echo "RELEASE_BODY<<EOF" >> "$GITHUB_OUTPUT"
           echo "$CONTENT" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        id: create_release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
@@ -347,21 +160,32 @@ jobs:
           prerelease: false
           body: ${{ steps.release_body.outputs.RELEASE_BODY }}
           files: |
-            dist/alist-sync-${{ github.ref_name }}-linux-*.zip
-            dist/alist-sync-${{ github.ref_name }}-linux-*.tar.gz
-            dist/alist-sync-${{ github.ref_name }}-windows-*.zip
+            alist-sync-${{ github.ref_name }}-linux-386.zip
+            alist-sync-${{ github.ref_name }}-linux-386.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-amd64.zip
+            alist-sync-${{ github.ref_name }}-linux-amd64.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-arm-v6.zip
+            alist-sync-${{ github.ref_name }}-linux-arm-v6.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-arm-v7.zip
+            alist-sync-${{ github.ref_name }}-linux-arm-v7.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-arm64.zip
+            alist-sync-${{ github.ref_name }}-linux-arm64.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-ppc64le.zip
+            alist-sync-${{ github.ref_name }}-linux-ppc64le.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-s390x.zip
+            alist-sync-${{ github.ref_name }}-linux-s390x.tar.gz
 
-      - name: Sync to Gitee
-        uses: Yikun/hub-mirror-action@master
+      # 新增推送文件到 Gitee 的步骤
+      - name: Sync Github Repos To Gitee  # 名字随便起
+        uses: Yikun/hub-mirror-action@master  # 使用Yikun/hub-mirror-action
         with:
-          src: github/xjxjin
-          dst: gitee/xjxjin
-          dst_key: ${{ secrets.GITEE_PRIVATE_KEY }}
-          dst_token: ${{ secrets.GITEE_TOKEN }}
-          account_type: user
-          clone_style: "https"
-          debug: true
-          force_update: true
-          static_list: "alist-sync-web"
-          timeout: '600s'
-
+          src: github/xjxjin  # 源端账户名(github)
+          dst: gitee/xjxjin  # 目的端账户名(gitee)
+          dst_key: ${{ secrets.GITEE_PRIVATE_KEY }}  # SSH密钥对中的私钥
+          dst_token:  ${{ secrets.GITEE_TOKEN }}  # Gitee账户的私人令牌
+          account_type: user  # 账户类型
+          clone_style: "https"  # 使用https方式进行clone，也可以使用ssh
+          debug: true  # 启用后会显示所有执行命令
+          force_update: true  # 启用后，强制同步，即强制覆盖目的端仓库
+          static_list: "${{ github.event.repository.name }}"  # 静态同步列表，在此填写需要同步的仓库名称，可填写多个
+          timeout: '600s'  # git超时设置，超时后会自动重试git操作
