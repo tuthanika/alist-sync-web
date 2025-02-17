@@ -499,6 +499,10 @@ class TaskManager:
 
         os.environ['SYNC_DELETE_ACTION'] = sync_del_action
         os.environ['EXCLUDE_DIRS'] = task.get('excludeDirs', '')
+        
+        # 添加正则表达式环境变量
+        if task.get('regexPatterns'):
+            os.environ['REGEX_PATTERNS'] = json.dumps(task['regexPatterns'])
 
         if task['syncMode'] == 'data':
             self._handle_data_sync(task)

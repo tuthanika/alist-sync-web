@@ -6,6 +6,7 @@ import os
 import logging
 from typing import List, Dict, Optional, Union
 from logging.handlers import TimedRotatingFileHandler
+from typing import List, Tuple, Pattern
 
 
 def setup_logger():
@@ -81,7 +82,7 @@ def parse_time_and_adjust_utc(date_str: str) -> datetime:
 class AlistSync:
     def __init__(self, base_url: str, username: str = None, password: str = None, token: str = None,
                  sync_delete_action: str = "none", exclude_list: List[str] = None, move_file_action: bool = False,
-                 task_list: List[str] = None):
+                 task_list: List[str] = None, regex_patterns_list: List[Tuple[Pattern[str], str]] = []):
         """初始化AlistSync类"""
         self.base_url = base_url
         self.username = username
@@ -93,6 +94,7 @@ class AlistSync:
         self.task_list = task_list
         self.exclude_list = exclude_list
         self.move_file_action = move_file_action
+        self.regex_patterns_list = regex_patterns_list
 
     def _create_connection(self) -> Union[http.client.HTTPConnection, http.client.HTTPSConnection]:
         """创建HTTP(S)连接"""
@@ -320,6 +322,12 @@ class AlistSync:
         logger.error("获取存储列表失败")
         return []
 
+    def check_regex(self, path: str) -> bool:
+        for regex in self.regex_patterns_list:
+            if regex.fullmatch(path):
+                return True
+        return False
+
     def sync_directories(self, src_dir: str, dst_dir: str) -> bool:
         """同步两个目录"""
         try:
@@ -446,6 +454,10 @@ class AlistSync:
             if src_dir in self.exclude_list:
                 logger.info(f"排除目录: {src_dir}, 跳过同步")
                 return True
+            # 判断正则表达式
+            if self.check_regex(item_name):
+                logger.info(f"符合正则表达式，排除排除: {src_dir}, 跳过同步")
+                return True
 
             # 处理文件
             src_path = f"{src_dir}/{item_name}".replace('//', '/')
@@ -542,7 +554,8 @@ def get_dir_pairs_from_env() -> List[str]:
     return dir_pairs_list
 
 
-def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str = None, move_file: bool = False):
+def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str = None, move_file: bool = False,
+         regex_patterns: str = None, ):
     """主函数，用于命令行执行"""
     code_souce()
     xiaojin()
@@ -577,6 +590,17 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
         exclude_dirs = os.environ.get("EXCLUDE_DIRS", "")
         exclude_list = exclude_dirs.split(",")
 
+    # 正则表达式
+    if regex_patterns:
+        regex_patterns_list = regex_patterns.split(" ")
+    else:
+        regex_patterns = os.environ.get("REGEX_PATTERNS", None)
+        regex_patterns_list = regex_patterns.split(" ")
+    regex_and_replace_list: List[Tuple[Pattern[str], str]] = []
+    if regex_patterns_list:
+        regex_and_replace_list: List[Tuple[Pattern[str], str]] = [(re.compile(pattern), replacement) for
+                                                                  pattern, replacement in regex_patterns_list]
+
     if not base_url:
         logger.error("服务地址(BASE_URL)环境变量未设置")
         return
@@ -590,7 +614,8 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
         f"配置信息 - URL: {base_url}, 用户名: {username}, 删除动作: {sync_delete_action}, 删除源目录: {move_file_action}")
 
     # 创建AlistSync实例时添加token参数
-    alist_sync = AlistSync(base_url, username, password, token, sync_delete_action, exclude_list, move_file_action)
+    alist_sync = AlistSync(base_url, username, password, token, sync_delete_action, exclude_list, move_file_action,
+                           regex_and_replace_list)
     # 验证 token 是否正确
     if not alist_sync.login():
         logger.error("令牌或用户名密码不正确")

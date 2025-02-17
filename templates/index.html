@@ -193,6 +193,47 @@
       background: #f8f8f8;
       border-radius: 3px;
     }
+    .regex-tag {
+      display: inline-block;
+      background: #009688;  /* 使用 layui 默认按钮颜色 */
+      border: 1px solid #009688;  /* 边框颜色 */
+      padding: 2px 8px;
+      margin: 2px;
+      border-radius: 3px;
+      font-size: 12px;
+      color: #fff;  /* 文字使用白色 */
+    }
+
+    .regex-tag .close {
+      margin-left: 5px;
+      cursor: pointer;
+      color: #fff;  /* 关闭按钮使用白色 */
+    }
+
+    .regex-tag .close:hover {
+      color: #d9d9d9;  /* 鼠标悬停时使用浅灰色 */
+    }
+
+    .regex-input {
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    .regex-input-container {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 5px;
+      border: 1px solid #e6e6e6;
+      padding: 5px;
+      min-height: 38px;
+      background-color: #fff;
+      transition: border-color 0.3s;  /* 添加过渡效果 */
+    }
+
+    .regex-input-container:focus-within {
+      border-color: #009688;  /* 输入框获得焦点时边框颜色与按钮一致 */
+    }
   </style>
 </head>
 <body>
@@ -409,30 +450,39 @@
                 <!-- 共同配置项 -->
                 <div class="layui-form-item">
                   <label class="layui-form-label">排除目录</label>
-                <div class="layui-input-inline" style="width: 400px;">
-                  <input type="text" name="excludeDirs[]" placeholder="多个目录用英文逗号分隔" class="layui-input">
+                  <div class="layui-input-inline" style="width: 400px;">
+                    <input type="text" name="excludeDirs[]" placeholder="多个目录用英文逗号分隔" class="layui-input">
+                  </div>
                 </div>
-              </div>
 
-              <div class="layui-form-item">
-                <label class="layui-form-label">定时调度器</label>
-                <div class="layui-input-inline" style="width: 200px;">
-                  <input type="text" name="cron[]" class="layui-input cron-input" placeholder="格式: * * * * *">
+                <div class="layui-form-item">
+                  <label class="layui-form-label" title="用于匹配文件名的正则表达式">正则表达式</label>
+                  <div class="layui-input-inline" style="width: 400px;">
+                    <input type="text" name="regexPatterns[]" placeholder="多个正则表达式用空格分隔" class="layui-input">
+                  </div>
+                  <div class="layui-form-mid layui-text-em">用于匹配文件名，支持多个表达式</div>
                 </div>
-                <div class="layui-inline">
-                  <button type="button" class="layui-btn layui-btn-primary check-next-time">查看时间</button>
-                </div>
-              </div>
 
-              <!-- 在定时调度器后添加执行时间显示 -->
-              <div class="layui-form-item">
-                <label class="layui-form-label">执行时间</label>
-                <div class="layui-input-inline" style="width: 400px;">
-                  <div class="next-run-time" style="padding: 9px 15px; line-height: 20px; color: #666;"></div>
+                <div class="layui-form-item">
+                  <label class="layui-form-label">定时调度器</label>
+                  <div class="layui-input-inline" style="width: 200px;">
+                    <input type="text" name="cron[]" class="layui-input cron-input" placeholder="格式: * * * * *">
+                  </div>
+                  <div class="layui-inline">
+                    <button type="button" class="layui-btn layui-btn-primary check-next-time">查看时间</button>
+                  </div>
                 </div>
-              </div>
 
-              <hr class="layui-border-green">
+                <!-- 在定时调度器后添加执行时间显示 -->
+                <div class="layui-form-item">
+                  <label class="layui-form-label">执行时间</label>
+                  <div class="layui-input-inline" style="width: 400px;">
+                    <div class="next-run-time" style="padding: 9px 15px; line-height: 20px; color: #666;"></div>
+                  </div>
+                </div>
+
+                <hr class="layui-border-green">
+              </div>
             </div>
           </div>
         </div>
@@ -440,7 +490,7 @@
 
       <!-- 操作按钮 -->
       <div class="layui-form-item" style="margin-top: 15px;">
-        <div class="layui-input-block" style="margin-left: 110px;">
+        <div class="layui-input-block" style="margin-left: 0; text-align: center;">
           <button type="button" class="layui-btn" id="saveSyncConfig">保存同步配置</button>
           <button type="button" class="layui-btn layui-btn-normal" id="runTask">立即执行</button>
           <button type="button" class="layui-btn layui-btn-primary" id="viewLogs">查看日志</button>
@@ -548,13 +598,35 @@
     var form = layui.form,
         layer = layui.layer,
         laydate = layui.laydate,
-        $ = layui.$;
+        $ = layui.$;  // 使用 layui 的 jQuery
+
+    // 修改 createNewTask 函数
+    window.createNewTask = function(taskId) {
+      console.log('创建新任务:', taskId);
+      var $newTask = $('.task-item:first').clone();
+      $newTask.attr('data-task-id', taskId);
+      
+      // 更新所有需要唯一ID的元素
+      updateTaskIds($newTask, taskId);
+      
+      // 清空所有输入
+      clearTaskInputs($newTask);
+      
+      // 重新绑定其他事件处理器
+      bindSyncDelActionEvents($newTask);
+      bindCheckNextTimeEvent($newTask);
+      
+      return $newTask;
+    };
 
     // 修改页面加载时的初始化代码
     $(document).ready(function() {
+      console.log('页面DOM加载完成，准备初始化第一个任务');
+      
       // 为初始任务绑定事件
       bindSyncDelActionEvents($('.task-item:first'));
       bindCheckNextTimeEvent($('.task-item:first'));
+      console.log('第一个任务初始化完成');
 
       // 先加载存储器列表
       loadStorages().then(() => {
@@ -565,6 +637,9 @@
         layer.msg('加载存储器列表失败: ' + (error.message || '未知错误'));
       });
     });
+
+    // 删除所有与正则表达式标签相关的样式
+    $('.regex-tag, .regex-input, .regex-input-container').remove();
 
     // 加载存储器列表
     async function loadStorages() {
@@ -896,26 +971,6 @@
         form.render();
     });
 
-    // 修改创建新任务的函数
-    function createNewTask(taskId) {
-        var $newTask = $('.task-item:first').clone();
-        $newTask.attr('data-task-id', taskId);
-
-        // 更新所有需要唯一ID的元素
-        updateTaskIds($newTask, taskId);
-
-        // 清空所有输入
-        clearTaskInputs($newTask);
-
-        // 重新绑定同步目标差异处置策略的事件
-        bindSyncDelActionEvents($newTask);
-
-        // 重新绑定查看时间按钮事件
-        bindCheckNextTimeEvent($newTask);
-
-        return $newTask;
-    }
-
     // 更新任务ID
     function updateTaskIds($task, taskId) {
       // 更新同步目标差异处置策略的name属性和lay-group属性
@@ -1222,6 +1277,12 @@
                 });
             }
 
+            // 收集正则表达式
+            var regexPatterns = $task.find('input[name="regexPatterns[]"]').val();
+            if (regexPatterns) {
+              task.regexPatterns = regexPatterns;
+            }
+
             tasks.push(task);
         });
         return tasks;
@@ -1491,6 +1552,11 @@
 
       // 重新绑定查看时间按钮事件
       bindCheckNextTimeEvent($task);
+
+      // 填充正则表达式
+      if (task.regexPatterns) {
+        $task.find('input[name="regexPatterns[]"]').val(task.regexPatterns);
+      }
 
       // 等待一小段时间确保DOM更新完成
       await new Promise(resolve => setTimeout(resolve, 50));
