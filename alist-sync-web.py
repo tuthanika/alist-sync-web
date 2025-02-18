@@ -502,7 +502,7 @@ class TaskManager:
         
         # 添加正则表达式环境变量
         if task.get('regexPatterns'):
-            os.environ['REGEX_PATTERNS'] = json.dumps(task['regexPatterns'])
+            os.environ['REGEX_PATTERNS'] = task.get('regexPatterns')
 
         if task['syncMode'] == 'data':
             self._handle_data_sync(task)
