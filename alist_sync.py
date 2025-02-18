@@ -618,7 +618,8 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
     #             print(f"正则表达式 {pattern_replacement} 编译失败：{e}")
     regex_pattern = None
     try:
-        regex_pattern = re.compile(regex_patterns)
+        if regex_patterns:
+            regex_pattern = re.compile(regex_patterns)
         # regex_and_replace_list.append(compiled_pattern)
     except re.error as e:
         print(f"正则表达式 {regex_patterns} 编译失败：{e}")
