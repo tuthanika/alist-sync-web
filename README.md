@@ -1,3 +1,6 @@
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=xjxjin/alist-sync&type=Date)](https://star-history.com/#xjxjin/alist-sync&Date)
 # Alist-Sync
 
 一个基于 Web 界面的 Alist 存储同步工具，支持多任务管理、定时同步、差异处理等功能。
@@ -188,6 +191,13 @@ ql raw https://github.com/xjxjin/alist-sync/raw/main/alist-sync-ql.py
 </details>
 
 ## 更新记录
+### v1.1.5
+- 2025-03-15
+- 修复正则表达式为空报错问题
+
+### v1.1.4
+- 2025-02-21
+- 修复正则表达式为空报错问题
 
 ### v1.1.3
 - 2025-02-18
