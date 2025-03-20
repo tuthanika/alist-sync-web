@@ -6,6 +6,12 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+  packages: write
+  issues: write
+  pull-requests: write
+
 env:
   PYTHON_VERSION: "3.10"
   REQUIREMENTS: "requirements.txt"
