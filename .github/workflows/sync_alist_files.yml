@@ -97,85 +97,62 @@ jobs:
           static_list: "${{ github.event.repository.name }}"  # 静态同步列表，在此填写需要同步的仓库名称，可填写多个
           timeout: '600s'  # git超时设置，超时后会自动重试git操作
 
-  build-binaries:
+
+jobs:
+  build:
     runs-on: ubuntu-latest
-    # 仅在推送标签时运行
-    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          fetch-depth: 0
+          python-version: '3.10'
 
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.21'
-
-      - name: Get version from tag
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Build binaries for multiple platforms
+      - name: Install dependencies
         run: |
-          platforms=("linux/386" "linux/amd64" "linux/arm/v6" "linux/arm/v7" "linux/arm64" "linux/ppc64le" "linux/s390x")
-          mkdir -p releases
-          
-          for platform in "${platforms[@]}"; do
-            # 将平台字符串分割为OS和ARCH
-            OS=$(echo $platform | cut -d'/' -f1)
-            ARCH=$(echo $platform | cut -d'/' -f2)
-            
-            # 处理特殊情况，如arm/v6, arm/v7
-            if [[ $platform == *"/"*"/"* ]]; then
-              ARCH=$(echo $platform | cut -d'/' -f2-3 | tr '/' '-')
-            fi
-            
-            # 设置输出文件名
-            OUTPUT="releases/${{ env.APP_NAME }}-$OS-$ARCH"
-            
-            echo "编译 $platform 到 $OUTPUT"
-            
-            # 设置环境变量
-            export GOOS=$OS
-            if [[ $ARCH == "386" ]]; then
-              export GOARCH="386"
-            elif [[ $ARCH == "amd64" ]]; then
-              export GOARCH="amd64"
-            elif [[ $ARCH == "arm-v6" ]]; then
-              export GOARCH="arm"
-              export GOARM="6"
-            elif [[ $ARCH == "arm-v7" ]]; then
-              export GOARCH="arm"
-              export GOARM="7"
-            elif [[ $ARCH == "arm64" ]]; then
-              export GOARCH="arm64"
-            elif [[ $ARCH == "ppc64le" ]]; then
-              export GOARCH="ppc64le"
-            elif [[ $ARCH == "s390x" ]]; then
-              export GOARCH="s390x"
-            fi
-            
-            # 编译
-            go build -o $OUTPUT -ldflags "-X main.Version=${{ steps.get_version.outputs.VERSION }}" ./cmd/web
-            
-            # 添加执行权限
-            chmod +x $OUTPUT
-          done
-          
-          # 打包文件
-          cd releases
-          for file in *; do
-            tar -czf "${file}.tar.gz" "$file"
-            # 也可以使用zip
-            # zip "${file}.zip" "$file"
-          done
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller --onefile --name alist-sync-web alist-sync-web.py
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: alist-sync-web
+          path: dist/alist-sync-web
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: alist-sync-web
+          path: dist
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: ${{ steps.get_version.outputs.VERSION }}
-          tag_name: ${{ steps.get_version.outputs.VERSION }}
-          files: releases/*
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
           draft: false
           prerelease: false
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: dist/alist-sync-web
+          asset_name: alist-sync-web
+          asset_content_type: application/octet-stream
