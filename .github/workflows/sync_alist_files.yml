@@ -4,164 +4,104 @@ on:
   push:
     tags:
       - 'v*'
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
-
-# 添加权限配置
-permissions:
-  contents: write
-  packages: write
-  issues: write
-  pull-requests: write
-
-env:
-  DOCKER_IMAGE: ${{ github.repository }}
-  PLATFORMS: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64,linux/ppc64le,linux/s390x
-  APP_NAME: alist-sync-web
 
 jobs:
-  docker-build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.DOCKER_IMAGE }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Get version from tag
-        if: startsWith(github.ref, 'refs/tags/')
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: ${{ env.PLATFORMS }}
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: false
-
-      - name: Update Docker Hub Description
-        if: github.event_name != 'pull_request'
-        uses: peter-evans/dockerhub-description@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ env.DOCKER_IMAGE }}
-          readme-filepath: ./README.md
-          short-description: "Alist-Sync - A tool for syncing files between Alist storages"
-
-      # 新增推送文件到 Gitee 的步骤
-      - name: Sync Github Repos To Gitee  # 名字随便起
-        uses: Yikun/hub-mirror-action@master  # 使用Yikun/hub-mirror-action
-        with:
-          src: github/xjxjin  # 源端账户名(github)
-          dst: gitee/xjxjin  # 目的端账户名(gitee)
-          dst_key: ${{ secrets.GITEE_PRIVATE_KEY }}  # SSH密钥对中的私钥
-          dst_token:  ${{ secrets.GITEE_TOKEN }}  # Gitee账户的私人令牌
-          account_type: user  # 账户类型
-          clone_style: "https"  # 使用https方式进行clone，也可以使用ssh
-          debug: true  # 启用后会显示所有执行命令
-          force_update: true  # 启用后，强制同步，即强制覆盖目的端仓库
-          static_list: "${{ github.event.repository.name }}"  # 静态同步列表，在此填写需要同步的仓库名称，可填写多个
-          timeout: '600s'  # git超时设置，超时后会自动重试git操作
-
-
-
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux
+            arch: amd64
+          - os: ubuntu-22.04
+            platform: linux
+            arch: 386
+          - os: ubuntu-22.04
+            platform: linux
+            arch: armv6
+          - os: ubuntu-22.04
+            platform: linux
+            arch: armv7
+          - os: ubuntu-22.04
+            platform: linux
+            arch: arm64
+          - os: macos-12
+            platform: macos
+            arch: x64
+          - os: windows-2022
+            platform: win
+            arch: amd64
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
+    - name: Install system dependencies (Linux)
+      if: matrix.platform == 'linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libssl-dev libffi-dev
 
-      - name: Build with PyInstaller
-        run: |
-          pyinstaller --onefile --name alist-sync-web alist-sync-web.py
+    - name: Install system dependencies (macOS)
+      if: matrix.platform == 'macos'
+      run: |
+        brew install openssl libffi
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: alist-sync-web
-          path: dist/alist-sync-web
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        pip install -r requirements.txt
+
+    - name: Build executable
+      run: |
+        pyinstaller --onefile --name alist-sync-web \
+          --add-data 'static:static' \
+          --add-data 'templates:templates' \
+          --add-data 'VERSION:.' \
+          alist-sync-web.py
+        
+        # Windows 特殊处理
+        if [ "${{ matrix.platform }}" = "win" ]; then
+          mv dist/alist-sync-web.exe dist/alist-sync-web-${{ matrix.platform }}-${{ matrix.arch }}.exe
+        else
+          mv dist/alist-sync-web dist/alist-sync-web-${{ matrix.platform }}-${{ matrix.arch }}
+        fi
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: binaries
+        path: dist/
 
   release:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: alist-sync-web
-          path: dist
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: binaries
+        path: dist
 
-      - name: Get tag name
-        id: get_tag
-        run: |
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
-            echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          else
-            echo "TAG_NAME=latest" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.get_tag.outputs.TAG_NAME }}
-          release_name: Release ${{ steps.get_tag.outputs.TAG_NAME }}
-          draft: false
-          prerelease: false
-
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: dist/alist-sync-web
-          asset_name: alist-sync-web
-          asset_content_type: application/octet-stream
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.ref }}
+        name: Release ${{ github.ref_name }}
+        body: |
+          Multi-platform builds for ${{ github.ref_name }}
+          Supported platforms:
+          - Linux (386, amd64, armv6, armv7, arm64)
+          - macOS (x64)
+          - Windows (amd64)
+        files: |
+          dist/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
