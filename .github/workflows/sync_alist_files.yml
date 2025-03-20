@@ -14,14 +14,11 @@ permissions:
 
 env:
   PYTHON_VERSION: "3.10"
-  REQUIREMENTS: "requirements.txt"
+  PLATFORMS: "linux/amd64,linux/arm/v7,linux/arm64"
 
 jobs:
   build-binaries:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        architecture: [amd64, armv7l, arm64]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -29,63 +26,32 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Setup Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build binaries
+        uses: docker/build-push-action@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          context: .
+          platforms: ${{ env.PLATFORMS }}
+          outputs: type=local,dest=./dist
+          build-args: |
+            PYTHON_VERSION=${{ env.PYTHON_VERSION }}
 
-      - name: Install system dependencies
+      - name: Prepare release assets
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-              build-essential \
-              zlib1g-dev \
-              libncurses5-dev \
-              libgdbm-dev \
-              libnss3-dev \
-              libssl-dev \
-              libreadline-dev \
-              libffi-dev \
-              wget
-
-      - name: Install PyInstaller
-        run: pip install pyinstaller
-
-      - name: Install Python dependencies
-        run: pip install -r ${{ env.REQUIREMENTS }}
-
-      - name: Setup architecture environment
-        run: |
-          case "${{ matrix.architecture }}" in
-            amd64)
-              echo "TARGET_ARCH=x86_64" >> $GITHUB_ENV
-              ;;
-            armv7l)
-              echo "TARGET_ARCH=armv7l" >> $GITHUB_ENV
-              ;;
-            arm64)
-              echo "TARGET_ARCH=aarch64" >> $GITHUB_ENV
-              ;;
-          esac
-
-      - name: Build executable with PyInstaller
-        run: |
-          pyinstaller \
-              --name "alist-sync_${{ env.TARGET_ARCH }}" \
-              --onefile \
-              --add-data "static:static" \
-              --add-data "templates:templates" \
-              --distpath ./dist/${{ matrix.architecture }} \
-              alist-sync-web.py
-
-      - name: Package artifacts
-        run: |
-          cd dist/${{ matrix.architecture }}
-          tar czvf ../alist-sync_${GITHUB_REF#refs/tags/}_${{ matrix.architecture }}.tar.gz *
+          cd dist
+          find . -name 'alist-sync*' -exec mv {} . \;
+          for f in *; do 
+            arch=${f#*-}
+            arch=${arch%-*}
+            mv "$f" "alist-sync_${GITHUB_REF#refs/tags/}_${arch}.bin"
+          done
+          tar -czvf binaries.tar.gz *.bin
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/*.tar.gz
+          files: dist/binaries.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
