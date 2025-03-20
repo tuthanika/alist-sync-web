@@ -28,13 +28,6 @@ jobs:
             platform: linux
             arch: arm64
 
-#          - os: macos-12
-#            platform: macos
-#            arch: x64
-
-          - os: windows-2022
-            platform: win
-            arch: amd64
 
     steps:
     - name: Setup QEMU (ARM)
@@ -73,31 +66,19 @@ jobs:
 
     - name: Build executable
       run: |
-        # Windows特殊处理
-        if ("${{ matrix.platform }}" == "win") {
-          pyinstaller --onefile --name alist-sync-web `
-            --add-data "static;static" `
-            --add-data "templates;templates" `
-            --add-data "VERSION;." `
-            alist-sync-web.py
-        } else {
-          pyinstaller --onefile --name alist-sync-web \
-            --add-data 'static:static' \
-            --add-data 'templates:templates' \
-            --add-data 'VERSION:.' \
-            alist-sync-web.py
-        }
-    
+        pyinstaller --onefile --name alist-sync-web \
+          --add-data 'static:static' \
+          --add-data 'templates:templates' \
+          --add-data 'VERSION:.' \
+          alist-sync-web.py
+        
         # 动态生成文件名
-        $outputName = "alist-sync-web-${{ matrix.platform }}-${{ matrix.arch }}"
-        if ("${{ matrix.platform }}" -eq "win") {
-          Move-Item -Path dist/alist-sync-web.exe -Destination "dist/${outputName}.exe"
-        } else {
-          Move-Item -Path dist/alist-sync-web -Destination "dist/${outputName}"
-        }
-      shell: pwsh  # 显式指定PowerShell Core
-
-
+        OUTPUT_NAME="alist-sync-web-${{ matrix.platform }}-${{ matrix.arch }}"
+        if [ "${{ matrix.platform }}" = "win" ]; then
+          mv dist/alist-sync-web.exe "dist/${OUTPUT_NAME}.exe"
+        else
+          mv dist/alist-sync-web "dist/${OUTPUT_NAME}"
+        fi
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -128,7 +109,6 @@ jobs:
           Multi-platform builds for ${{ github.ref_name }}
           Supported platforms:
           - Linux (386, amd64, armv6, armv7, arm64)
-          - Windows (amd64)
         files: release-assets/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
