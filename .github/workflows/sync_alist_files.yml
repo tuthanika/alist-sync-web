@@ -89,6 +89,8 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 确保有权限创建发布
     steps:
     - name: Download all artifacts
       uses: actions/download-artifact@v4
