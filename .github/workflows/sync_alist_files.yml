@@ -120,9 +120,8 @@ jobs:
           TEMP_DIR="/tmp/alist-sync-release"
           mkdir -p "$TEMP_DIR"
 
-          # 更新包含文件列表
+          # 修正包含文件列表
           INCLUDE_FILES=(
-            "executables"
             "static"
             "templates"
             "README.md"
@@ -154,6 +153,20 @@ jobs:
               fi
             done
             
+            # 新增可执行文件处理
+            EXECUTABLE_SRC="executables/${platform}/alist-sync-web_${platform}"
+            if [ -f "$EXECUTABLE_SRC" ]; then
+              # 移动并重命名可执行文件到根目录
+              cp "$EXECUTABLE_SRC" "$PLATFORM_DIR/alist-sync-web"
+              chmod +x "$PLATFORM_DIR/alist-sync-web"
+            else
+              echo "Error: Executable not found at $EXECUTABLE_SRC"
+              exit 1
+            fi
+            
+            # 删除临时生成的 executables 目录
+            rm -rf "$PLATFORM_DIR/executables"
+
             # 在平台目录中创建压缩包
             cd "$PLATFORM_DIR"
             
