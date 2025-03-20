@@ -121,7 +121,7 @@ jobs:
           pyinstaller --onefile --name alist-sync-web alist-sync-web.py
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: alist-sync-web
           path: dist/alist-sync-web
