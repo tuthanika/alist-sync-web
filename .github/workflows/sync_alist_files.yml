@@ -100,8 +100,11 @@ jobs:
         run: |
           # 为每个平台构建可执行文件
           for platform in ${{ env.PLATFORMS }}; do
-            # 修正平台名称转换逻辑（添加g修饰符替换所有匹配）
-            cleaned_platform=$(echo "$platform" | sed 's/linux\//linux-/g' | tr '/' '-')
+            # 统一转换格式：linux/arm/v6 → linux-arm-v6
+            cleaned_platform=$(echo "$platform" | sed 's/\//-/g')
+            
+            # 添加调试信息
+            echo "Building for platform: $cleaned_platform"
             
             # 使用PyInstaller打包
             pyinstaller --onefile \
@@ -113,6 +116,9 @@ jobs:
             # 创建平台目录并移动文件
             mkdir -p "executables/${cleaned_platform}"
             mv dist/* "executables/${cleaned_platform}/"
+            
+            # 验证文件生成
+            ls -l executables/${cleaned_platform}/
           done
 
       - name: Create Source Archive
