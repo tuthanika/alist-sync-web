@@ -100,7 +100,8 @@ jobs:
         run: |
           # 为每个平台构建可执行文件
           for platform in ${{ env.PLATFORMS }}; do
-            cleaned_platform=$(echo $platform | sed 's/linux\///' | tr '/' '-')
+            # 修正平台名称转换逻辑（添加g修饰符替换所有匹配）
+            cleaned_platform=$(echo "$platform" | sed 's/linux\//linux-/g' | tr '/' '-')
             
             # 使用PyInstaller打包
             pyinstaller --onefile \
@@ -119,6 +120,9 @@ jobs:
         run: |
           TEMP_DIR="/tmp/alist-sync-release"
           mkdir -p "$TEMP_DIR"
+
+          # 动态生成平台列表（从环境变量转换）
+          PLATFORMS=($(echo "${{ env.PLATFORMS }}" | sed 's/linux\//linux-/g' | tr '/' '-' | tr ',' ' '))
 
           # 修正包含文件列表
           INCLUDE_FILES=(
