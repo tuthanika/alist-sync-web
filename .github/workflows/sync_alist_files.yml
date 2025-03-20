@@ -1,77 +1,85 @@
-name: Build Executables and Release
+name: Build and Release Binaries
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v*'
 
-permissions:
-  contents: write
+env:
+  PYTHON_VERSION: "3.10"
+  REQUIREMENTS: "requirements.txt"
 
 jobs:
-  build:
+  build-binaries:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-          - arch: amd64
-            platform: linux/amd64
-            docker_image: python:3.10-alpine
-          - arch: armv6
-            platform: linux/arm/v6
-            docker_image: arm32v6/python:3.10-alpine
-          - arch: armv7
-            platform: linux/arm/v7
-            docker_image: arm32v7/python:3.10-alpine
-          - arch: arm64
-            platform: linux/arm64
-            docker_image: arm64v8/python:3.10-alpine
-          - arch: ppc64le
-            platform: linux/ppc64le
-            docker_image: ppc64le/python:3.10-alpine
-          - arch: s390x
-            platform: linux/s390x
-            docker_image: s390x/python:3.10-alpine
-
+        architecture: [amd64, armv7l, arm64]
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Build executable
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install system dependencies
         run: |
-          docker run --rm --platform ${{ matrix.platform }} \
-            -v "$(pwd):/app" ${{ matrix.docker_image }} \
-            sh -c "apk add --no-cache gcc musl-dev python3-dev libffi-dev openssl-dev &&
-            pip install --no-cache-dir pyinstaller -r /app/requirements.txt &&
-            cd /app &&
-            pyinstaller --onefile alist-sync-web.py --name alist-sync &&
-            mv dist/alist-sync dist/alist-sync-${{ matrix.arch }}"
+          sudo apt-get update
+          sudo apt-get install -y \
+              build-essential \
+              zlib1g-dev \
+              libncurses5-dev \
+              libgdbm-dev \
+              libnss3-dev \
+              libssl-dev \
+              libreadline-dev \
+              libffi-dev \
+              wget
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: alist-sync-${{ matrix.arch }}
-          path: dist/alist-sync-${{ matrix.arch }}
+      - name: Install PyInstaller
+        run: pip install pyinstaller
 
-  create-release:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
+      - name: Install Python dependencies
+        run: pip install -r ${{ env.REQUIREMENTS }}
 
-      - name: Create Release
+      - name: Setup architecture environment
+        run: |
+          case "${{ matrix.architecture }}" in
+            amd64)
+              echo "TARGET_ARCH=x86_64" >> $GITHUB_ENV
+              ;;
+            armv7l)
+              echo "TARGET_ARCH=armv7l" >> $GITHUB_ENV
+              ;;
+            arm64)
+              echo "TARGET_ARCH=aarch64" >> $GITHUB_ENV
+              ;;
+          esac
+
+      - name: Build executable with PyInstaller
+        run: |
+          pyinstaller \
+              --name "alist-sync_${{ env.TARGET_ARCH }}" \
+              --onefile \
+              --add-data "static:static" \
+              --add-data "templates:templates" \
+              --distpath ./dist/${{ matrix.architecture }} \
+              alist-sync-web.py
+
+      - name: Package artifacts
+        run: |
+          cd dist/${{ matrix.architecture }}
+          tar czvf ../alist-sync_${GITHUB_REF#refs/tags/}_${{ matrix.architecture }}.tar.gz *
+
+      - name: Upload Release Assets
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            dist/alist-sync-*
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
-          body: |
-            Pre-built Linux executables for multiple architectures
-          draft: false
-          prerelease: false
+          files: dist/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
