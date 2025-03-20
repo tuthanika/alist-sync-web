@@ -10,20 +10,27 @@ on:
 permissions:
   contents: write
   packages: write
+  issues: write
+  pull-requests: write
 
 env:
-  PLATFORMS: |
-    ["linux/386",
-    "linux/amd64",
-    "linux/arm/v6",
-    "linux/arm/v7",
-    "linux/arm64",
-    "linux/ppc64le",
-    "linux/s390x"]
+  DOCKER_IMAGE: ${{ github.repository }}  # 请替换成你的 Docker Hub 用户名和镜像名
+  PLATFORMS: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64,linux/ppc64le,linux/s390x
+
+
 jobs:
   build-binaries:
     name: Build Binaries
     runs-on: ubuntu-latest
+    env:
+      PLATFORMS: |
+        ["linux/386",
+        "linux/amd64",
+        "linux/arm/v6",
+        "linux/arm/v7",
+        "linux/arm64",
+        "linux/ppc64le",
+        "linux/s390x"]
     strategy:
       matrix:
         platform: ${{ fromJson(env.PLATFORMS) }}
