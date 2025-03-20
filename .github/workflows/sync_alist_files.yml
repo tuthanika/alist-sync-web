@@ -4,86 +4,67 @@ on:
   push:
     tags:
       - 'v*'
+  release:
+    types: [created]
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  PLATFORMS: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64,linux/ppc64le,linux/s390x
 
 jobs:
-  build:
-    runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            platform: linux/amd64
-            qemu_arch: x86_64
-          - arch: arm64
-            platform: linux/arm64
-            qemu_arch: aarch64
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
-      with:
-        platforms: ${{ matrix.platform }}
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
-      with:
-        driver: docker-container
-        platforms: ${{ matrix.platform }}
-
-    - name: Build binary
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        platforms: ${{ matrix.platform }}
-        outputs: type=local,dest=dist
-        build-args: |
-          TARGETARCH=${{ matrix.arch }}
-
-    - name: Verify binary architecture
-      run: |
-        file dist/alist-sync-web-*
-        # 强制架构检查
-        if ! readelf -h dist/alist-sync-web-* | grep -q "Machine:.*AArch64"; then
-          echo "ERROR: Binary architecture mismatch!"
-          exit 1
-        fi
-
-    - name: Rename artifacts
-      run: |
-        cd dist
-        mv alist-sync-web alist-sync-web-linux-${{ matrix.arch }}
-
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: binary-linux-${{ matrix.arch }}
-        path: dist/alist-sync-web-linux-${{ matrix.arch }}
-
-  release:
-    needs: build
+  build-binaries:
+    name: Build Binaries
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
+    strategy:
+      matrix:
+        platform: ${{ fromJson(env.PLATFORMS) }}
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: ${{ github.ref }}
-        name: Release ${{ github.ref_name }}
-        body: |
-          ARM64 Build Verification:
-          ```bash
-          file alist-sync-web-linux-arm64 | grep "ARM aarch64"
-          ```
-        files: artifacts/*
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Prepare build environment
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          target: builder
+          outputs: type=local,dest=./build
+
+      - name: Build with PyInstaller
+        run: |
+          # 根据平台处理架构标识符
+          ARCH=$(echo "${{ matrix.platform }}" | cut -d'/' -f2)
+          case $ARCH in
+            arm/v6) ARCH=armv6 ;;
+            arm/v7) ARCH=armv7 ;;
+            *) ;;
+          esac
+          
+          docker run --rm -v $(pwd):/app -w /app \ 
+            ${{ matrix.platform }}python:3.10-alpine \
+            sh -c "apk add build-base zlib-dev libffi-dev && \
+            pip install pyinstaller && \
+            pyinstaller --onefile --name alist-sync-${ARCH} alist-sync-web.py"
+
+      - name: Package artifacts
+        run: |
+          ARCH=$(echo "${{ matrix.platform }}" | cut -d'/' -f2 | sed 's/\//-/g')
+          mkdir -p release
+          tar czvf release/alist-sync-${ARCH}.tar.gz -C dist .
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -20,4 +20,10 @@ coverage.xml
 .pytest_cache
 .env
 .venv
-.DS_Store 
+.DS_Store
+**/__pycache__
+**/*.pyc
+*.spec
+build/
+dist/
+release/

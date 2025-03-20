@@ -1,33 +1,56 @@
-# 第一阶段：交叉编译环境
-FROM --platform=$BUILDPLATFORM tonistiigi/xx:1.3.0 AS xx
+# 使用 Python Alpine 作为构建镜像
+FROM python:3.10-alpine AS builder
 
-FROM --platform=$BUILDPLATFORM python:3.10-slim AS builder
-
-# 导入交叉编译工具链
-COPY --from=xx / /
-
-ARG TARGETARCH
-RUN xx-apk add --no-cache gcc musl-dev libffi-dev openssl-dev
-
+# 设置工作目录
 WORKDIR /app
-COPY . .
 
-# 设置交叉编译环境
-RUN xx-setup && \
-    pip install --no-cache-dir pyinstaller && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pyinstaller --onefile \
-      --name alist-sync-web \
-      --add-data 'static:static' \
-      --add-data 'templates:templates' \
-      --add-data 'VERSION:.' \
-      alist-sync-web.py
+# 安装构建依赖
+RUN apk add --no-cache \
+    gcc \
+    musl-dev \
+    python3-dev \
+    libffi-dev \
+    openssl-dev
 
-# 第二阶段：验证输出
-FROM --platform=$TARGETPLATFORM alpine:3.18 AS verify
-COPY --from=builder /app/dist/alist-sync-web .
-RUN [ "/bin/sh", "-c", "file alist-sync-web | grep 'ELF 64-bit LSB executable, ARM aarch64'" ]
+# 复制依赖文件
+COPY requirements.txt .
 
-# 最终输出阶段
-FROM scratch AS export
-COPY --from=verify /alist-sync-web /
+# 安装依赖到指定目录
+RUN pip install --no-cache-dir -r requirements.txt --target=/install
+
+# 使用更小的运行时镜像
+FROM python:3.10-alpine
+
+# 设置工作目录
+WORKDIR /app
+
+# 复制安装的依赖
+COPY --from=builder /install /usr/local/lib/python3.10/site-packages
+
+# 只复制必要的项目文件
+COPY alist-sync-web.py alist_sync.py VERSION ./
+COPY static ./static
+COPY templates ./templates
+
+# 创建必要的目录
+RUN mkdir -p /app/data/config /app/data/log && \
+    # 设置权限
+    chmod -R 755 /app/data && \
+    # 清理不必要的文件
+    find /usr/local/lib/python3.10/site-packages -name "*.pyc" -delete && \
+    find /usr/local/lib/python3.10/site-packages -name "__pycache__" -exec rm -r {} + && \
+    # 删除测试文件和文档
+    find /usr/local/lib/python3.10/site-packages -name "tests" -type d -exec rm -r {} + && \
+    find /usr/local/lib/python3.10/site-packages -name "*.txt" -delete && \
+    find /usr/local/lib/python3.10/site-packages -name "*.md" -delete
+
+# 设置环境变量
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/app:$PATH"
+
+# 暴露端口
+EXPOSE 52441
+
+# 设置启动命令
+CMD ["python", "alist-sync-web.py"]
