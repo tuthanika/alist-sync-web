@@ -9,6 +9,7 @@ jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false  # 关闭快速失败策略
       matrix:
         include:
           - os: ubuntu-22.04
@@ -34,6 +35,10 @@ jobs:
             arch: amd64
 
     steps:
+    - name: Setup QEMU (ARM)
+      if: contains(matrix.arch, 'arm') && matrix.platform == 'linux'
+      uses: docker/setup-qemu-action@v2
+
     - name: Checkout code
       uses: actions/checkout@v4
 
@@ -53,6 +58,11 @@ jobs:
       run: |
         brew install openssl libffi
 
+    - name: Install system dependencies (Windows)
+      if: matrix.platform == 'win'
+      run: |
+        choco install -y openssl
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
@@ -67,17 +77,18 @@ jobs:
           --add-data 'VERSION:.' \
           alist-sync-web.py
         
-        # Windows 特殊处理
+        # 动态生成文件名
+        OUTPUT_NAME="alist-sync-web-${{ matrix.platform }}-${{ matrix.arch }}"
         if [ "${{ matrix.platform }}" = "win" ]; then
-          mv dist/alist-sync-web.exe dist/alist-sync-web-${{ matrix.platform }}-${{ matrix.arch }}.exe
+          mv dist/alist-sync-web.exe "dist/${OUTPUT_NAME}.exe"
         else
-          mv dist/alist-sync-web dist/alist-sync-web-${{ matrix.platform }}-${{ matrix.arch }}
+          mv dist/alist-sync-web "dist/${OUTPUT_NAME}"
         fi
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
-        name: binaries
+        name: binary-${{ matrix.platform }}-${{ matrix.arch }}  # 唯一artifact名称
         path: dist/
 
   release:
@@ -85,10 +96,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Download all artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v3
       with:
-        name: binaries
-        path: dist
+        path: artifacts
+
+    - name: Prepare release assets
+      run: |
+        mkdir -p release-assets
+        find artifacts/ -type f -exec cp {} release-assets/ \;
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
@@ -101,7 +116,6 @@ jobs:
           - Linux (386, amd64, armv6, armv7, arm64)
           - macOS (x64)
           - Windows (amd64)
-        files: |
-          dist/*
+        files: release-assets/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
