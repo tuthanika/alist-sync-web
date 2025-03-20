@@ -11,19 +11,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [linux]
-        arch: [amd64, 386, armv6, armv7, arm64]
         include:
           - arch: amd64
-            docker_platform: linux/amd64
-          - arch: 386
-            docker_platform: linux/386
-          - arch: armv6
-            docker_platform: linux/arm/v6
-          - arch: armv7
-            docker_platform: linux/arm/v7
+            platform: linux/amd64
+            qemu_arch: x86_64
           - arch: arm64
-            docker_platform: linux/arm64
+            platform: linux/arm64
+            qemu_arch: aarch64
 
     steps:
     - name: Checkout code
@@ -31,36 +25,43 @@ jobs:
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v2
+      with:
+        platforms: ${{ matrix.platform }}
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
       with:
-        driver-opts: |
-          image=moby/buildkit:master
+        driver: docker-container
+        platforms: ${{ matrix.platform }}
 
     - name: Build binary
       uses: docker/build-push-action@v4
       with:
         context: .
-        platforms: ${{ matrix.docker_platform }}
-        outputs: type=local,dest=dist/${{ matrix.arch }}
+        platforms: ${{ matrix.platform }}
+        outputs: type=local,dest=dist
         build-args: |
-          PYTHON_VERSION=3.10
+          TARGETARCH=${{ matrix.arch }}
 
-    - name: Fix permissions
+    - name: Verify binary architecture
       run: |
-        sudo chmod -R 755 dist
+        file dist/alist-sync-web-*
+        # 强制架构检查
+        if ! readelf -h dist/alist-sync-web-* | grep -q "Machine:.*AArch64"; then
+          echo "ERROR: Binary architecture mismatch!"
+          exit 1
+        fi
 
     - name: Rename artifacts
       run: |
-        cd dist/${{ matrix.arch }}
-        mv alist-sync-web alist-sync-web-${{ matrix.platform }}-${{ matrix.arch }}
+        cd dist
+        mv alist-sync-web alist-sync-web-linux-${{ matrix.arch }}
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: binary-${{ matrix.platform }}-${{ matrix.arch }}
-        path: dist/${{ matrix.arch }}/*
+        name: binary-linux-${{ matrix.arch }}
+        path: dist/alist-sync-web-linux-${{ matrix.arch }}
 
   release:
     needs: build
@@ -73,20 +74,16 @@ jobs:
       with:
         path: artifacts
 
-    - name: Prepare release assets
-      run: |
-        mkdir -p release-assets
-        find artifacts/ -type f -exec cp {} release-assets/ \;
-
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ github.ref }}
         name: Release ${{ github.ref_name }}
         body: |
-          Multi-platform builds for ${{ github.ref_name }}
-          Supported platforms:
-          - Linux (386, amd64, armv6, armv7, arm64)
-        files: release-assets/*
+          ARM64 Build Verification:
+          ```bash
+          file alist-sync-web-linux-arm64 | grep "ARM aarch64"
+          ```
+        files: artifacts/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
