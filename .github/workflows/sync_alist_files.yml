@@ -6,14 +6,8 @@ on:
     tags:
       - 'v*'
 
-permissions:
-  contents: write
-  packages: write
-  issues: write
-  pull-requests: write
-
 env:
-  PYTHON_VERSION: "3.10"
+  PYTHON_VERSION: "3.10"  # 定义默认Python版本
   PLATFORMS: "linux/amd64,linux/arm/v7,linux/arm64"
 
 jobs:
@@ -36,15 +30,20 @@ jobs:
           platforms: ${{ env.PLATFORMS }}
           outputs: type=local,dest=./dist
           build-args: |
-            PYTHON_VERSION=${{ env.PYTHON_VERSION }}
+            PYTHON_VERSION=${{ env.PYTHON_VERSION }}  # 正确传递参数
 
       - name: Prepare release assets
         run: |
           cd dist
-          find . -name 'alist-sync*' -exec mv {} . \;
-          for f in *; do 
-            arch=${f#*-}
-            arch=${arch%-*}
+          # 修复架构命名映射
+          find . -name 'alist-sync-*' -exec mv {} . \;
+          for f in *; do
+            case "${f##*-}" in
+              amd64)   arch="x86_64" ;;
+              arm64)   arch="aarch64" ;;
+              arm/v7)  arch="armv7l" ;;
+              *)       arch="unknown" ;;
+            esac
             mv "$f" "alist-sync_${GITHUB_REF#refs/tags/}_${arch}.bin"
           done
           tar -czvf binaries.tar.gz *.bin

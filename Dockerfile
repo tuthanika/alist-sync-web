@@ -1,4 +1,7 @@
-# 使用多阶段构建
+# 必须在前端声明构建参数
+ARG PYTHON_VERSION=3.10
+
+# 多阶段构建
 FROM --platform=$BUILDPLATFORM python:${PYTHON_VERSION}-alpine AS builder
 
 # 安装构建依赖
