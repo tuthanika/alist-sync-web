@@ -36,7 +36,7 @@ jobs:
           platforms: ${{ env.PLATFORMS }}
           outputs: type=local,dest=./dist
           build-args: |
-            PYTHON_VERSION=${{ env.PYTHON_VERSION }}  # 关键：参数传递无额外字符
+            PYTHON_VERSION=${{ env.PYTHON_VERSION }}
 
       - name: Prepare release assets
         run: |
