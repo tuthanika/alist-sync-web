@@ -1,8 +1,5 @@
-# 使用 Python Alpine 作为构建镜像
+# 第一阶段：构建环境
 FROM python:3.10-alpine AS builder
-
-# 设置工作目录
-WORKDIR /app
 
 # 安装构建依赖
 RUN apk add --no-cache \
@@ -10,47 +7,38 @@ RUN apk add --no-cache \
     musl-dev \
     python3-dev \
     libffi-dev \
-    openssl-dev
+    openssl-dev \
+    build-base
 
-# 复制依赖文件
-COPY requirements.txt .
+# 安装必要工具
+RUN pip install --no-cache-dir pyinstaller
 
-# 安装依赖到指定目录
-RUN pip install --no-cache-dir -r requirements.txt --target=/install
-
-# 使用更小的运行时镜像
-FROM python:3.10-alpine
-
-# 设置工作目录
+# 复制项目文件
 WORKDIR /app
+COPY . .
 
-# 复制安装的依赖
-COPY --from=builder /install /usr/local/lib/python3.10/site-packages
+# 安装Python依赖
+RUN pip install --no-cache-dir -r requirements.txt
 
-# 只复制必要的项目文件
-COPY alist-sync-web.py alist_sync.py VERSION ./
-COPY static ./static
-COPY templates ./templates
+# 执行构建
+RUN pyinstaller --onefile \
+    --name alist-sync-web \
+    --add-data 'static:static' \
+    --add-data 'templates:templates' \
+    --add-data 'VERSION:.' \
+    alist-sync-web.py
 
-# 创建必要的目录
-RUN mkdir -p /app/data/config /app/data/log && \
-    # 设置权限
-    chmod -R 755 /app/data && \
-    # 清理不必要的文件
-    find /usr/local/lib/python3.10/site-packages -name "*.pyc" -delete && \
-    find /usr/local/lib/python3.10/site-packages -name "__pycache__" -exec rm -r {} + && \
-    # 删除测试文件和文档
-    find /usr/local/lib/python3.10/site-packages -name "tests" -type d -exec rm -r {} + && \
-    find /usr/local/lib/python3.10/site-packages -name "*.txt" -delete && \
-    find /usr/local/lib/python3.10/site-packages -name "*.md" -delete
+# 第二阶段：整理输出
+FROM alpine:3.18
 
-# 设置环境变量
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PATH="/app:$PATH"
+# 复制构建结果
+COPY --from=builder /app/dist/alist-sync-web /app/alist-sync-web
 
-# 暴露端口
-EXPOSE 52441
+# 设置输出目录
+WORKDIR /app
+RUN chmod +x alist-sync-web
 
-# 设置启动命令
-CMD ["python", "alist-sync-web.py"]
+# 设置输出路径
+VOLUME /output
+
+CMD cp alist-sync-web /output/

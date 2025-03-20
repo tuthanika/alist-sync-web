@@ -7,90 +7,64 @@ on:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-22.04
     strategy:
-      fail-fast: false  # 关闭快速失败策略
+      fail-fast: false
       matrix:
+        platform: [linux]
+        arch: [amd64, 386, armv6, armv7, arm64]
         include:
-          - os: ubuntu-22.04
-            platform: linux
-            arch: amd64
-          - os: ubuntu-22.04
-            platform: linux
-            arch: 386
-          - os: ubuntu-22.04
-            platform: linux
-            arch: armv6
-          - os: ubuntu-22.04
-            platform: linux
-            arch: armv7
-          - os: ubuntu-22.04
-            platform: linux
-            arch: arm64
-
+          - arch: amd64
+            docker_platform: linux/amd64
+            target_name: x86_64
+          - arch: 386
+            docker_platform: linux/386
+            target_name: i686
+          - arch: armv6
+            docker_platform: linux/arm/v6
+            target_name: armv6
+          - arch: armv7
+            docker_platform: linux/arm/v7
+            target_name: armv7
+          - arch: arm64
+            docker_platform: linux/arm64/v8
+            target_name: aarch64
 
     steps:
-    - name: Setup QEMU (ARM)
-      if: contains(matrix.arch, 'arm') && matrix.platform == 'linux'
-      uses: docker/setup-qemu-action@v2
-
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Build binary
+      uses: docker/build-push-action@v4
       with:
-        python-version: '3.10'
+        context: .
+        platforms: ${{ matrix.docker_platform }}
+        outputs: type=local,dest=dist
+        build-args: |
+          TARGET_ARCH=${{ matrix.target_name }}
 
-    - name: Install system dependencies (Linux)
-      if: matrix.platform == 'linux'
+    - name: Rename artifacts
       run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential libssl-dev libffi-dev
-
-#    - name: Install system dependencies (macOS)
-#      if: matrix.platform == 'macos'
-#      run: |
-#        brew install openssl libffi
-
-    - name: Install system dependencies (Windows)
-      if: matrix.platform == 'win'
-      run: |
-        choco install -y openssl
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pyinstaller
-        pip install -r requirements.txt
-
-    - name: Build executable
-      run: |
-        pyinstaller --onefile --name alist-sync-web \
-          --add-data 'static:static' \
-          --add-data 'templates:templates' \
-          --add-data 'VERSION:.' \
-          alist-sync-web.py
-        
-        # 动态生成文件名
-        OUTPUT_NAME="alist-sync-web-${{ matrix.platform }}-${{ matrix.arch }}"
-        if [ "${{ matrix.platform }}" = "win" ]; then
-          mv dist/alist-sync-web.exe "dist/${OUTPUT_NAME}.exe"
-        else
-          mv dist/alist-sync-web "dist/${OUTPUT_NAME}"
-        fi
+        cd dist
+        for f in *; do
+          new_name="alist-sync-web-${f#*-}"
+          mv "$f" "$new_name"
+        done
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: binary-${{ matrix.platform }}-${{ matrix.arch }}  # 唯一artifact名称
-        path: dist/
+        name: binary-${{ matrix.platform }}-${{ matrix.arch }}
+        path: dist/*
 
   release:
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # 确保有权限创建发布
+      contents: write
     steps:
     - name: Download all artifacts
       uses: actions/download-artifact@v4
