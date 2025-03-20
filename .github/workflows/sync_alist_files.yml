@@ -50,7 +50,7 @@ jobs:
             mv dist/alist-sync dist/alist-sync-${{ matrix.arch }}"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: alist-sync-${{ matrix.arch }}
           path: dist/alist-sync-${{ matrix.arch }}
@@ -60,7 +60,7 @@ jobs:
     needs: build
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: dist
 
