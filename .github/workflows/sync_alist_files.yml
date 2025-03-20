@@ -27,9 +27,11 @@ jobs:
           - os: ubuntu-22.04
             platform: linux
             arch: arm64
-          - os: macos-12
-            platform: macos
-            arch: x64
+
+#          - os: macos-12
+#            platform: macos
+#            arch: x64
+
           - os: windows-2022
             platform: win
             arch: amd64
@@ -53,10 +55,10 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential libssl-dev libffi-dev
 
-    - name: Install system dependencies (macOS)
-      if: matrix.platform == 'macos'
-      run: |
-        brew install openssl libffi
+#    - name: Install system dependencies (macOS)
+#      if: matrix.platform == 'macos'
+#      run: |
+#        brew install openssl libffi
 
     - name: Install system dependencies (Windows)
       if: matrix.platform == 'win'
@@ -71,19 +73,31 @@ jobs:
 
     - name: Build executable
       run: |
-        pyinstaller --onefile --name alist-sync-web \
-          --add-data 'static:static' \
-          --add-data 'templates:templates' \
-          --add-data 'VERSION:.' \
-          alist-sync-web.py
-        
+        # Windows特殊处理
+        if ("${{ matrix.platform }}" == "win") {
+          pyinstaller --onefile --name alist-sync-web `
+            --add-data "static;static" `
+            --add-data "templates;templates" `
+            --add-data "VERSION;." `
+            alist-sync-web.py
+        } else {
+          pyinstaller --onefile --name alist-sync-web \
+            --add-data 'static:static' \
+            --add-data 'templates:templates' \
+            --add-data 'VERSION:.' \
+            alist-sync-web.py
+        }
+    
         # 动态生成文件名
-        OUTPUT_NAME="alist-sync-web-${{ matrix.platform }}-${{ matrix.arch }}"
-        if [ "${{ matrix.platform }}" = "win" ]; then
-          mv dist/alist-sync-web.exe "dist/${OUTPUT_NAME}.exe"
-        else
-          mv dist/alist-sync-web "dist/${OUTPUT_NAME}"
-        fi
+        $outputName = "alist-sync-web-${{ matrix.platform }}-${{ matrix.arch }}"
+        if ("${{ matrix.platform }}" -eq "win") {
+          Move-Item -Path dist/alist-sync-web.exe -Destination "dist/${outputName}.exe"
+        } else {
+          Move-Item -Path dist/alist-sync-web -Destination "dist/${outputName}"
+        }
+      shell: pwsh  # 显式指定PowerShell Core
+
+
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -114,7 +128,6 @@ jobs:
           Multi-platform builds for ${{ github.ref_name }}
           Supported platforms:
           - Linux (386, amd64, armv6, armv7, arm64)
-          - macOS (x64)
           - Windows (amd64)
         files: release-assets/*
       env:
