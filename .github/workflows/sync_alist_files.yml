@@ -20,6 +20,7 @@ permissions:
 env:
   DOCKER_IMAGE: ${{ github.repository }}
   PLATFORMS: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64,linux/ppc64le,linux/s390x
+  APP_NAME: alist-sync-web
 
 jobs:
   docker-build:
@@ -40,7 +41,6 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
-
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -97,89 +97,85 @@ jobs:
           static_list: "${{ github.event.repository.name }}"  # 静态同步列表，在此填写需要同步的仓库名称，可填写多个
           timeout: '600s'  # git超时设置，超时后会自动重试git操作
 
-  # 新增可执行文件构建任务
-  build-executables:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        include:
-          - os: ubuntu-latest
-            output_name: alist-sync-web
-            asset_name: alist-sync-web-linux
-          - os: windows-latest
-            output_name: alist-sync-web.exe
-            asset_name: alist-sync-web-windows
-          - os: macos-latest
-            output_name: alist-sync-web
-            asset_name: alist-sync-web-macos
-    
+  build-binaries:
+    runs-on: ubuntu-latest
+    # 仅在推送标签时运行
+    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
         with:
-          python-version: '3.10'
-          
-      - name: Install dependencies
+          go-version: '1.21'
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build binaries for multiple platforms
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-      
-      - name: Build with PyInstaller
-        run: |
-          pyinstaller --onefile --name ${{ matrix.output_name }} alist-sync-web.py
+          platforms=("linux/386" "linux/amd64" "linux/arm/v6" "linux/arm/v7" "linux/arm64" "linux/ppc64le" "linux/s390x")
+          mkdir -p releases
           
-      - name: Package additional files (Linux/macOS)
-        if: matrix.os != 'windows-latest'
-        run: |
-          mkdir -p dist/static dist/templates dist/data/config dist/data/log
-          cp -r static/* dist/static/
-          cp -r templates/* dist/templates/
-          cp VERSION dist/
-          chmod +x dist/${{ matrix.output_name }}
-          cd dist && tar -czvf ../${{ matrix.asset_name }}.tar.gz *
+          for platform in "${platforms[@]}"; do
+            # 将平台字符串分割为OS和ARCH
+            OS=$(echo $platform | cut -d'/' -f1)
+            ARCH=$(echo $platform | cut -d'/' -f2)
+            
+            # 处理特殊情况，如arm/v6, arm/v7
+            if [[ $platform == *"/"*"/"* ]]; then
+              ARCH=$(echo $platform | cut -d'/' -f2-3 | tr '/' '-')
+            fi
+            
+            # 设置输出文件名
+            OUTPUT="releases/${{ env.APP_NAME }}-$OS-$ARCH"
+            
+            echo "编译 $platform 到 $OUTPUT"
+            
+            # 设置环境变量
+            export GOOS=$OS
+            if [[ $ARCH == "386" ]]; then
+              export GOARCH="386"
+            elif [[ $ARCH == "amd64" ]]; then
+              export GOARCH="amd64"
+            elif [[ $ARCH == "arm-v6" ]]; then
+              export GOARCH="arm"
+              export GOARM="6"
+            elif [[ $ARCH == "arm-v7" ]]; then
+              export GOARCH="arm"
+              export GOARM="7"
+            elif [[ $ARCH == "arm64" ]]; then
+              export GOARCH="arm64"
+            elif [[ $ARCH == "ppc64le" ]]; then
+              export GOARCH="ppc64le"
+            elif [[ $ARCH == "s390x" ]]; then
+              export GOARCH="s390x"
+            fi
+            
+            # 编译
+            go build -o $OUTPUT -ldflags "-X main.Version=${{ steps.get_version.outputs.VERSION }}" ./cmd/web
+            
+            # 添加执行权限
+            chmod +x $OUTPUT
+          done
           
-      - name: Package additional files (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: powershell
-        run: |
-          mkdir -p dist/static, dist/templates, dist/data/config, dist/data/log
-          Copy-Item -Recurse static/* dist/static/
-          Copy-Item -Recurse templates/* dist/templates/
-          Copy-Item VERSION dist/
-          Compress-Archive -Path dist/* -DestinationPath ${{ matrix.asset_name }}.zip
-      
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ matrix.asset_name }}
-          path: ${{ matrix.os != 'windows-latest' && format('{0}.tar.gz', matrix.asset_name) || format('{0}.zip', matrix.asset_name) }}
-          
-  # 创建 Release 并上传构建物
-  create-release:
-    needs: [docker-build, build-executables]
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        
-      - name: Download all artifacts
-        uses: actions/download-artifact@v3
-        
+          # 打包文件
+          cd releases
+          for file in *; do
+            tar -czf "${file}.tar.gz" "$file"
+            # 也可以使用zip
+            # zip "${file}.zip" "$file"
+          done
+
       - name: Create Release
-        id: create_release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            alist-sync-web-linux/*.tar.gz
-            alist-sync-web-windows/*.zip
-            alist-sync-web-macos/*.tar.gz
+          name: ${{ steps.get_version.outputs.VERSION }}
+          tag_name: ${{ steps.get_version.outputs.VERSION }}
+          files: releases/*
           draft: false
           prerelease: false
-
