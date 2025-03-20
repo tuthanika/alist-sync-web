@@ -98,7 +98,7 @@ jobs:
           timeout: '600s'  # git超时设置，超时后会自动重试git操作
 
 
-jobs:
+
   build:
     runs-on: ubuntu-latest
     steps:
