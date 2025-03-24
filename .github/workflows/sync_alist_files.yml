@@ -1,134 +1,192 @@
-name: Build and Release
+name: Build and Push Docker Image
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v*'
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+# 添加权限配置
+permissions:
+  contents: write
+  packages: write
+  issues: write
+  pull-requests: write
+
+env:
+  DOCKER_IMAGE: ${{ github.repository }}  # 请替换成你的 Docker Hub 用户名和镜像名
+  PLATFORMS: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64,linux/ppc64le,linux/s390x
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false  # 关闭快速失败策略
-      matrix:
-        include:
-          - os: ubuntu-22.04
-            platform: linux
-            arch: amd64
-          - os: ubuntu-22.04
-            platform: linux
-            arch: 386
-          - os: ubuntu-22.04
-            platform: linux
-            arch: armv6
-          - os: ubuntu-22.04
-            platform: linux
-            arch: armv7
-          - os: ubuntu-22.04
-            platform: linux
-            arch: arm64
-
-#          - os: macos-12
-#            platform: macos
-#            arch: x64
-
-          - os: windows-2022
-            platform: win
-            arch: amd64
-
-    steps:
-    - name: Setup QEMU (ARM)
-      if: contains(matrix.arch, 'arm') && matrix.platform == 'linux'
-      uses: docker/setup-qemu-action@v2
-
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-
-    - name: Install system dependencies (Linux)
-      if: matrix.platform == 'linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential libssl-dev libffi-dev
-
-#    - name: Install system dependencies (macOS)
-#      if: matrix.platform == 'macos'
-#      run: |
-#        brew install openssl libffi
-
-    - name: Install system dependencies (Windows)
-      if: matrix.platform == 'win'
-      run: |
-        choco install -y openssl
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pyinstaller
-        pip install -r requirements.txt
-
-    - name: Build executable
-      run: |
-        # Windows特殊处理
-        if ("${{ matrix.platform }}" == "win") {
-          pyinstaller --onefile --name alist-sync-web `
-            --add-data "static;static" `
-            --add-data "templates;templates" `
-            --add-data "VERSION;." `
-            alist-sync-web.py
-        } else {
-          pyinstaller --onefile --name alist-sync-web \
-            --add-data 'static:static' \
-            --add-data 'templates:templates' \
-            --add-data 'VERSION:.' \
-            alist-sync-web.py
-        }
-    
-        # 动态生成文件名
-        $outputName = "alist-sync-web-${{ matrix.platform }}-${{ matrix.arch }}"
-        if ("${{ matrix.platform }}" -eq "win") {
-          Move-Item -Path dist/alist-sync-web.exe -Destination "dist/${outputName}.exe"
-        } else {
-          Move-Item -Path dist/alist-sync-web -Destination "dist/${outputName}"
-        }
-      shell: pwsh  # 显式指定PowerShell Core
-
-
-
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: binary-${{ matrix.platform }}-${{ matrix.arch }}  # 唯一artifact名称
-        path: dist/
-
-  release:
-    needs: build
+  alist-sync-docker:
     runs-on: ubuntu-latest
     steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Prepare release assets
-      run: |
-        mkdir -p release-assets
-        find artifacts/ -type f -exec cp {} release-assets/ \;
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: ${{ github.ref }}
-        name: Release ${{ github.ref_name }}
-        body: |
-          Multi-platform builds for ${{ github.ref_name }}
-          Supported platforms:
-          - Linux (386, amd64, armv6, armv7, arm64)
-          - Windows (amd64)
-        files: release-assets/*
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Get version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: ${{ env.PLATFORMS }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      - name: Update Docker Hub Description
+        if: github.event_name != 'pull_request'
+        uses: peter-evans/dockerhub-description@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.DOCKER_IMAGE }}
+          readme-filepath: ./README.md
+          short-description: "Alist-Sync - A tool for syncing files between Alist storages"
+
+      # 以下是新增的 Release 相关步骤
+      - name: Create Source Archive
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          # 创建临时目录
+          TEMP_DIR="/tmp/alist-sync-release"
+          mkdir -p "$TEMP_DIR"
+          
+          # 定义要包含的文件列表
+          INCLUDE_FILES=(
+            "alist-sync-web.py"
+            "alist_sync.py"
+            "requirements.txt"
+            "Dockerfile"
+            "docker-compose.yml"
+            "README.md"
+            "static"
+            "templates"
+          )
+          
+          # 定义平台列表
+          PLATFORMS=(
+            "linux-386"
+            "linux-amd64"
+            "linux-arm-v6"
+            "linux-arm-v7"
+            "linux-arm64"
+            "linux-ppc64le"
+            "linux-s390x"
+          )
+          
+          # 为每个平台创建一个包
+          for platform in "${PLATFORMS[@]}"; do
+            # 创建平台特定的临时目录
+            PLATFORM_DIR="$TEMP_DIR/$platform"
+            mkdir -p "$PLATFORM_DIR"
+            
+            # 复制文件到平台目录
+            for item in "${INCLUDE_FILES[@]}"; do
+              if [ -e "$item" ]; then
+                cp -r "$item" "$PLATFORM_DIR/"
+              fi
+            done
+            
+            # 在平台目录中创建压缩包
+            cd "$PLATFORM_DIR"
+            
+            # 创建 ZIP 文件
+            zip -r "alist-sync-${{ github.ref_name }}-${platform}.zip" ./*
+            
+            # 创建 TAR.GZ 文件
+            tar --exclude='.[^/]*' -czf "alist-sync-${{ github.ref_name }}-${platform}.tar.gz" ./*
+            
+            # 移动压缩包到工作目录
+            mv "alist-sync-${{ github.ref_name }}-${platform}.zip" "$GITHUB_WORKSPACE/"
+            mv "alist-sync-${{ github.ref_name }}-${platform}.tar.gz" "$GITHUB_WORKSPACE/"
+          done
+
+      - name: Generate Release Body
+        if: startsWith(github.ref, 'refs/tags/')
+        id: release_body
+        run: |
+          # 将 release 内容保存到输出变量
+          CONTENT=$(cat RELEASE.md)
+          echo "RELEASE_BODY<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CONTENT" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          body: ${{ steps.release_body.outputs.RELEASE_BODY }}
+          files: |
+            alist-sync-${{ github.ref_name }}-linux-386.zip
+            alist-sync-${{ github.ref_name }}-linux-386.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-amd64.zip
+            alist-sync-${{ github.ref_name }}-linux-amd64.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-arm-v6.zip
+            alist-sync-${{ github.ref_name }}-linux-arm-v6.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-arm-v7.zip
+            alist-sync-${{ github.ref_name }}-linux-arm-v7.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-arm64.zip
+            alist-sync-${{ github.ref_name }}-linux-arm64.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-ppc64le.zip
+            alist-sync-${{ github.ref_name }}-linux-ppc64le.tar.gz
+            alist-sync-${{ github.ref_name }}-linux-s390x.zip
+            alist-sync-${{ github.ref_name }}-linux-s390x.tar.gz
+
+      # 新增推送文件到 Gitee 的步骤
+      - name: Sync Github Repos To Gitee  # 名字随便起
+        uses: Yikun/hub-mirror-action@master  # 使用Yikun/hub-mirror-action
+        with:
+          src: github/xjxjin  # 源端账户名(github)
+          dst: gitee/xjxjin  # 目的端账户名(gitee)
+          dst_key: ${{ secrets.GITEE_PRIVATE_KEY }}  # SSH密钥对中的私钥
+          dst_token:  ${{ secrets.GITEE_TOKEN }}  # Gitee账户的私人令牌
+          account_type: user  # 账户类型
+          clone_style: "https"  # 使用https方式进行clone，也可以使用ssh
+          debug: true  # 启用后会显示所有执行命令
+          force_update: true  # 启用后，强制同步，即强制覆盖目的端仓库
+          static_list: "${{ github.event.repository.name }}"  # 静态同步列表，在此填写需要同步的仓库名称，可填写多个
+          timeout: '600s'  # git超时设置，超时后会自动重试git操作
