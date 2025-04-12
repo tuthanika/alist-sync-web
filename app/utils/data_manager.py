@@ -90,13 +90,96 @@ class DataManager:
     
     def _read_json(self, file_path):
         """读取 JSON 文件"""
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        try:
+            # 如果文件不存在，创建默认内容
+            if not os.path.exists(file_path):
+                print(f"文件不存在，创建默认内容: {file_path}")
+                if "logs.json" in file_path:
+                    self._ensure_file_exists(file_path, [])
+                elif "users.json" in file_path:
+                    self._ensure_file_exists(file_path, self._get_default_users())
+                elif "settings.json" in file_path:
+                    self._ensure_file_exists(file_path, self._get_default_settings())
+                else:
+                    self._ensure_file_exists(file_path, [])
+            
+            # 尝试读取文件内容
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+                
+                # 检查文件是否为空
+                if not content:
+                    print(f"文件为空: {file_path}")
+                    if "logs.json" in file_path:
+                        return []
+                    elif "users.json" in file_path:
+                        return self._get_default_users()
+                    elif "settings.json" in file_path:
+                        return self._get_default_settings()
+                    else:
+                        return []
+                
+                # 尝试解析JSON
+                try:
+                    return json.loads(content)
+                except json.JSONDecodeError as e:
+                    print(f"JSON解析错误 ({file_path}): {str(e)}")
+                    # 如果文件内容不是有效的JSON，返回默认值
+                    if "logs.json" in file_path:
+                        self._write_json(file_path, [])
+                        return []
+                    elif "users.json" in file_path:
+                        default_users = self._get_default_users()
+                        self._write_json(file_path, default_users)
+                        return default_users
+                    elif "settings.json" in file_path:
+                        default_settings = self._get_default_settings()
+                        self._write_json(file_path, default_settings)
+                        return default_settings
+                    else:
+                        self._write_json(file_path, [])
+                        return []
+                        
+        except Exception as e:
+            print(f"读取JSON文件时出错 ({file_path}): {str(e)}")
+            # 返回默认值
+            if "logs.json" in file_path:
+                return []
+            elif "users.json" in file_path:
+                return self._get_default_users()
+            elif "settings.json" in file_path:
+                return self._get_default_settings()
+            else:
+                return []
     
     def _write_json(self, file_path, data):
         """写入 JSON 文件"""
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(data, ensure_ascii=False, indent=2, fp=f)
+        try:
+            # 确保目录存在
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            
+            # 先写入临时文件
+            temp_file = file_path + ".tmp"
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                json.dump(data, ensure_ascii=False, indent=2, fp=f)
+            
+            # 然后原子性地重命名为目标文件
+            if os.path.exists(file_path):
+                # 在Windows上需要先删除现有文件
+                try:
+                    os.remove(file_path)
+                except Exception as e:
+                    print(f"删除现有文件失败: {str(e)}")
+                    
+            os.rename(temp_file, file_path)
+        except Exception as e:
+            print(f"写入JSON文件时出错 ({file_path}): {str(e)}")
+            # 如果重命名失败，尝试直接写入
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, ensure_ascii=False, indent=2, fp=f)
+            except Exception as write_error:
+                print(f"直接写入也失败了: {str(write_error)}")
     
     def format_timestamp(self, timestamp):
         """将时间戳格式化为 yyyy-MM-dd HH:mm:ss 格式"""
@@ -296,43 +379,74 @@ class DataManager:
     # 日志管理
     def get_logs(self, limit=100):
         """获取最新日志"""
-        logs = self._read_json(self.logs_file)
-        logs_sorted = sorted(logs, key=lambda x: x.get("timestamp", 0), reverse=True)[:limit]
-        
-        # 格式化时间戳和添加缺失的任务名称
-        for log in logs_sorted:
-            if "timestamp" in log:
-                log["timestamp_formatted"] = self.format_timestamp(log["timestamp"])
+        try:
+            logs = self._read_json(self.logs_file)
             
-            # 确保所有包含 task_id 的日志都有 task_name
-            if "task_id" in log and (not log.get("task_name") or log.get("task_name") == ""):
-                task = self.get_task(log["task_id"])
-                if task:
-                    log["task_name"] = task.get("name", f"任务 {log['task_id']}")
-                else:
-                    # 如果找不到对应的任务，使用任务ID作为备用显示
-                    log["task_name"] = f"任务 {log['task_id']}"
-        
-        return logs_sorted
+            # 确保logs是一个列表
+            if not isinstance(logs, list):
+                print(f"日志文件内容不是有效的列表，重置为空列表")
+                logs = []
+                self._write_json(self.logs_file, logs)
+                
+            logs_sorted = sorted(logs, key=lambda x: x.get("timestamp", 0), reverse=True)[:limit]
+            
+            # 格式化时间戳和添加缺失的任务名称
+            for log in logs_sorted:
+                if "timestamp" in log:
+                    log["timestamp_formatted"] = self.format_timestamp(log["timestamp"])
+                
+                # 确保所有包含 task_id 的日志都有 task_name
+                if "task_id" in log and (not log.get("task_name") or log.get("task_name") == ""):
+                    task = self.get_task(log["task_id"])
+                    if task:
+                        log["task_name"] = task.get("name", f"任务 {log['task_id']}")
+                    else:
+                        # 如果找不到对应的任务，使用任务ID作为备用显示
+                        log["task_name"] = f"任务 {log['task_id']}"
+            
+            return logs_sorted
+            
+        except Exception as e:
+            print(f"获取日志时出错: {str(e)}")
+            # 如果出错，返回空列表
+            return []
     
     def add_log(self, log_data):
         """添加日志"""
-        logs = self._read_json(self.logs_file)
-        timestamp = int(time.time())
-        log_data["timestamp"] = timestamp
-        log_data["timestamp_formatted"] = self.format_timestamp(timestamp)
-        
-        # 如果日志包含 task_id 但没有 task_name，尝试添加任务名称
-        if "task_id" in log_data and "task_name" not in log_data:
-            task = self.get_task(log_data["task_id"])
-            if task:
-                log_data["task_name"] = task.get("name", "未知任务")
-        
-        # 限制日志数量为最新的 1000 条
-        logs.append(log_data)
-        logs = sorted(logs, key=lambda x: x.get("timestamp", 0), reverse=True)[:1000]
-        
-        self._write_json(self.logs_file, logs)
+        try:
+            logs = self._read_json(self.logs_file)
+            timestamp = int(time.time())
+            log_data["timestamp"] = timestamp
+            log_data["timestamp_formatted"] = self.format_timestamp(timestamp)
+            
+            # 如果日志包含 task_id 但没有 task_name，尝试添加任务名称
+            if "task_id" in log_data and "task_name" not in log_data:
+                task = self.get_task(log_data["task_id"])
+                if task:
+                    log_data["task_name"] = task.get("name", "未知任务")
+            
+            # 确保logs是一个列表
+            if not isinstance(logs, list):
+                logs = []
+                
+            # 限制日志数量为最新的 1000 条
+            logs.append(log_data)
+            logs = sorted(logs, key=lambda x: x.get("timestamp", 0), reverse=True)[:1000]
+            
+            # 写入日志前打印调试信息
+            print(f"正在写入日志，当前日志条数: {len(logs)}")
+            try:
+                self._write_json(self.logs_file, logs)
+                print(f"日志写入成功 - {log_data.get('message', '无消息')}")
+            except Exception as e:
+                print(f"写入日志时发生错误: {str(e)}")
+                # 尝试重新创建日志文件
+                with open(self.logs_file, 'w', encoding='utf-8') as f:
+                    json.dump(logs, ensure_ascii=False, indent=2, fp=f)
+        except Exception as e:
+            print(f"添加日志失败: {str(e)}")
+            # 确保日志文件存在并有效
+            self._ensure_file_exists(self.logs_file, [])
     
     def clear_old_logs(self, days=None):
         """清理旧日志"""

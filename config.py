@@ -5,7 +5,7 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-key-for-alist-sync'
     SESSION_TYPE = 'filesystem'
     PERMANENT_SESSION_LIFETIME = 86400  # 会话有效期 24 小时
-    DEBUG = os.environ.get('FLASK_DEBUG', False)
+    DEBUG = False
     
     # 应用目录
     BASEDIR = os.path.abspath(os.path.dirname(__file__))
@@ -55,12 +55,12 @@ class ProductionConfig(Config):
 
 
 # 根据环境变量选择配置
-config_name = os.environ.get('FLASK_ENV', 'development')
+config_name = os.environ.get('FLASK_ENV', 'production')
 config = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,
-    'default': DevelopmentConfig
+    'default': ProductionConfig
 }
 
-# 默认使用开发配置
+# 默认使用生产配置
 Config = config.get(config_name, config['default']) 

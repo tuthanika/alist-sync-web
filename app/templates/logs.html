@@ -9,6 +9,9 @@
     <button class="btn btn-secondary" id="refreshLogsBtn">
         <i class="bi bi-arrow-clockwise"></i> 刷新
     </button>
+    <button class="btn btn-warning" id="repairLogsBtn">
+        <i class="bi bi-tools"></i> 修复日志
+    </button>
     <button class="btn btn-danger" id="clearLogsBtn">
         <i class="bi bi-trash"></i> 清空日志
     </button>
@@ -196,6 +199,43 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
                 <button type="button" class="btn btn-danger" id="confirmClearBtn">确认清空</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 确认修复日志模态框 -->
+<div class="modal fade" id="confirmRepairModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header">
+                <h5 class="modal-title">修复日志系统</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>此操作将尝试修复日志系统，确保日志能够正常记录。是否继续？</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-warning" id="confirmRepairBtn">确认修复</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 修复结果模态框 -->
+<div class="modal fade" id="repairResultModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header">
+                <h5 class="modal-title">修复结果</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="repairResultContent">
+                <!-- 结果内容将在JS中添加 -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
             </div>
         </div>
     </div>
@@ -393,6 +433,81 @@
         // 刷新日志
         document.getElementById('refreshLogsBtn').addEventListener('click', function() {
             window.location.reload();
+        });
+        
+        // 修复日志
+        document.getElementById('repairLogsBtn').addEventListener('click', function() {
+            // 显示确认对话框
+            new bootstrap.Modal(document.getElementById('confirmRepairModal')).show();
+        });
+        
+        // 确认修复
+        document.getElementById('confirmRepairBtn').addEventListener('click', function() {
+            // 显示加载状态
+            document.getElementById('confirmRepairBtn').disabled = true;
+            document.getElementById('confirmRepairBtn').innerHTML = '<span class="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true"></span> 修复中...';
+            
+            // 发送修复请求
+            fetch('/api/logs/repair', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                // 恢复按钮状态
+                document.getElementById('confirmRepairBtn').disabled = false;
+                document.getElementById('confirmRepairBtn').innerHTML = '确认修复';
+                
+                // 关闭确认模态框
+                bootstrap.Modal.getInstance(document.getElementById('confirmRepairModal')).hide();
+                
+                // 构建结果内容
+                let resultHtml = '';
+                if (data.status === 'success') {
+                    resultHtml = `<div class="alert alert-success">
+                        <i class="bi bi-check-circle-fill me-2"></i>
+                        ${data.message}
+                    </div>`;
+                } else {
+                    resultHtml = `<div class="alert alert-danger">
+                        <i class="bi bi-x-circle-fill me-2"></i>
+                        ${data.message}
+                    </div>`;
+                }
+                
+                // 显示结果
+                document.getElementById('repairResultContent').innerHTML = resultHtml;
+                new bootstrap.Modal(document.getElementById('repairResultModal')).show();
+                
+                // 如果成功，3秒后刷新页面
+                if (data.status === 'success') {
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 3000);
+                }
+            })
+            .catch(error => {
+                // 恢复按钮状态
+                document.getElementById('confirmRepairBtn').disabled = false;
+                document.getElementById('confirmRepairBtn').innerHTML = '确认修复';
+                
+                console.error('修复日志错误:', error);
+                
+                // 构建错误消息
+                let resultHtml = `<div class="alert alert-danger">
+                    <i class="bi bi-x-circle-fill me-2"></i>
+                    网络错误，请重试
+                </div>`;
+                
+                // 显示结果
+                document.getElementById('repairResultContent').innerHTML = resultHtml;
+                
+                // 关闭确认模态框并显示结果
+                bootstrap.Modal.getInstance(document.getElementById('confirmRepairModal')).hide();
+                new bootstrap.Modal(document.getElementById('repairResultModal')).show();
+            });
         });
         
         // 清空日志

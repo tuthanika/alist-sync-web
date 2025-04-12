@@ -44,4 +44,14 @@ Dockerfile
 .coverage
 htmlcov/
 coverage.xml
-*.cover 
+*.cover
+test_*.py
+pytest.ini
+
+# 其他不需要的文件
+data/log/
+*.log
+*.pyc
+README.md
+RELEASE.md
+run.py 

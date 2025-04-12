@@ -131,6 +131,16 @@ def profile():
 @main_bp.route('/')
 def index():
     """首页 - 概述与监控面板"""
+    # 添加测试日志
+    data_manager = current_app.config['DATA_MANAGER']
+    try:
+        data_manager.add_log({
+            "level": "INFO",
+            "message": "访问首页",
+            "details": {"ip": request.remote_addr, "user_agent": request.user_agent.string}
+        })
+    except Exception as e:
+        current_app.logger.error(f"记录日志失败: {str(e)}")
     return render_template('index.html')
 
 @main_bp.route('/connections')
@@ -1077,7 +1087,12 @@ def api_import_data():
             return jsonify({"status": "error", "message": "未提供有效的配置数据"}), 400
             
         data_manager = current_app.config['DATA_MANAGER']
+        # 尝试两种方式获取导入数据
         import_data = request.json.get('data')
+        
+        # 如果没有data字段，则整个请求体可能就是导入数据
+        if not import_data and isinstance(request.json, dict) and ('users' in request.json or 'connections' in request.json or 'tasks' in request.json or 'settings' in request.json):
+            import_data = request.json
         
         if not import_data:
             return jsonify({"status": "error", "message": "配置数据为空"}), 400
@@ -1117,6 +1132,64 @@ def api_version():
 def import_export_page():
     """导入导出页面"""
     return render_template('import_export.html')
+
+@api_bp.route('/logs/repair', methods=['POST'])
+def api_repair_logs():
+    """修复日志文件"""
+    try:
+        data_manager = current_app.config['DATA_MANAGER']
+        
+        # 读取旧日志
+        try:
+            with open(data_manager.logs_file, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+                old_logs = json.loads(content) if content else []
+                if not isinstance(old_logs, list):
+                    old_logs = []
+        except Exception:
+            old_logs = []
+        
+        # 创建测试日志
+        timestamp = int(time.time())
+        test_log = {
+            "level": "INFO",
+            "message": "日志系统已修复",
+            "timestamp": timestamp,
+            "timestamp_formatted": data_manager.format_timestamp(timestamp),
+            "details": {"triggered_by": "repair_api"}
+        }
+        
+        # 重写日志文件
+        logs = old_logs + [test_log]
+        data_manager._write_json(data_manager.logs_file, logs)
+        
+        # 验证日志文件
+        try:
+            new_logs = data_manager.get_logs()
+            if len(new_logs) > 0:
+                success = True
+                message = f"日志文件已修复，当前有 {len(new_logs)} 条日志"
+            else:
+                success = False
+                message = "日志文件修复失败，仍然无法读取日志"
+        except Exception as e:
+            success = False
+            message = f"日志文件修复失败: {str(e)}"
+        
+        return jsonify({
+            "status": "success" if success else "error",
+            "message": message,
+            "logs_count": len(logs)
+        })
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        current_app.logger.error(f"修复日志文件时出错: {error_details}")
+        
+        return jsonify({
+            "status": "error",
+            "message": f"修复日志文件时出错: {str(e)}"
+        }), 500
 
 # 注册蓝图
 # ... existing code ... 

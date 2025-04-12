@@ -158,7 +158,7 @@
                         url: '/api/import',
                         method: 'POST',
                         contentType: 'application/json',
-                        data: JSON.stringify(importData),
+                        data: JSON.stringify({"data": importData}),
                         success: function(response) {
                             // 在模态框中显示结果
                             let resultHTML = '';
