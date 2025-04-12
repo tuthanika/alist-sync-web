@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}任务实例 - Alist-Sync{% endblock %}
+
+{% block page_title %}任务实例记录{% endblock %}
+
+{% block header_buttons %}
+<button class="btn btn-secondary" id="refreshBtn">
+    <i class="bi bi-arrow-clockwise"></i> 刷新数据
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card bg-dark-subtle">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th>实例ID</th>
+                                <th>任务名称</th>
+                                <th>任务ID</th>
+                                <th>开始时间</th>
+                                <th>结束时间</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="instances-table">
+                            {% if instances %}
+                                {% for instance in instances %}
+                                <tr>
+                                    <td>{{ instance.task_instances_id }}</td>
+                                    <td>{{ instance.task_name }}</td>
+                                    <td>{{ instance.task_id }}</td>
+                                    <td>{{ instance.start_time_formatted }}</td>
+                                    <td>{{ instance.end_time_formatted or "进行中" }}</td>
+                                    <td>
+                                        {% if instance.status == 'running' %}
+                                        <span class="badge bg-primary">运行中</span>
+                                        {% elif instance.status == 'completed' %}
+                                        <span class="badge bg-success">已完成</span>
+                                        {% elif instance.status == 'failed' %}
+                                        <span class="badge bg-danger">失败</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">{{ instance.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-info view-log" data-instance-id="{{ instance.task_instances_id }}" data-task-name="{{ instance.task_name }}">
+                                                <i class="bi bi-file-text"></i>
+                                            </button>
+                                            {% if instance.status == 'failed' %}
+                                            <button class="btn btn-sm btn-warning view-error" data-instance-id="{{ instance.task_instances_id }}" data-error="{{ instance.result.message }}">
+                                                <i class="bi bi-exclamation-triangle"></i>
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="7" class="text-center">暂无任务实例</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 任务日志查看模态框 -->
+<div class="modal fade" id="taskLogModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header">
+                <h5 class="modal-title">任务执行日志</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <h6 id="logTaskName" class="mb-3"></h6>
+                <div class="bg-dark-subtle p-3 text-light" style="border-radius: 5px; max-height: 500px; overflow-y: auto;">
+                    <pre id="task-log-content" class="mb-0" style="white-space: pre-wrap;"></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" id="refreshLogBtn">刷新</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 错误详情模态框 -->
+<div class="modal fade" id="errorModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header">
+                <h5 class="modal-title">错误详情</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger" id="error-message"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 刷新按钮
+        document.getElementById('refreshBtn').addEventListener('click', function() {
+            location.reload();
+        });
+        
+        // 查看日志按钮事件
+        document.querySelectorAll('.view-log').forEach(button => {
+            button.addEventListener('click', function() {
+                const instanceId = this.getAttribute('data-instance-id');
+                const taskName = this.getAttribute('data-task-name');
+                
+                // 显示任务名称
+                document.getElementById('logTaskName').textContent = `任务: ${taskName} (实例 ID: ${instanceId})`;
+                
+                // 设置刷新按钮的实例ID
+                document.getElementById('refreshLogBtn').setAttribute('data-instance-id', instanceId);
+                
+                // 加载任务日志
+                loadTaskLog(instanceId);
+                
+                // 显示日志模态框
+                new bootstrap.Modal(document.getElementById('taskLogModal')).show();
+            });
+        });
+        
+        // 刷新日志按钮
+        document.getElementById('refreshLogBtn').addEventListener('click', function() {
+            const instanceId = this.getAttribute('data-instance-id');
+            if (instanceId) {
+                loadTaskLog(instanceId);
+            }
+        });
+        
+        // 查看错误详情按钮事件
+        document.querySelectorAll('.view-error').forEach(button => {
+            button.addEventListener('click', function() {
+                const errorMessage = this.getAttribute('data-error');
+                
+                // 显示错误信息
+                document.getElementById('error-message').textContent = errorMessage;
+                
+                // 显示错误模态框
+                new bootstrap.Modal(document.getElementById('errorModal')).show();
+            });
+        });
+        
+        // 辅助函数：加载任务日志
+        function loadTaskLog(instanceId) {
+            const logContent = document.getElementById('task-log-content');
+            logContent.textContent = '加载中...';
+            
+            fetch(`/api/task-instances/${instanceId}/logs`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success' && data.logs && data.logs.length > 0) {
+                    logContent.textContent = data.logs.join('\n');
+                } else {
+                    logContent.textContent = '没有找到日志记录';
+                }
+            })
+            .catch(error => {
+                console.error('加载任务日志失败:', error);
+                logContent.textContent = '加载日志失败: ' + error.message;
+            });
+        }
+    });
+</script>
+{% endblock %} 

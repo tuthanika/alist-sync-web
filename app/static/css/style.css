@@ -1,0 +1,224 @@
+/* Alist-Sync 科技风格样式 */
+:root {
+    --primary-bg: #121212;
+    --secondary-bg: #1e1e1e;
+    --accent-color: #0d6efd;
+    --accent-hover: #0b5ed7;
+    --text-color: #f8f9fa;
+    --border-color: #2d2d2d;
+    --success-color: #198754;
+    --info-color: #0dcaf0;
+    --warning-color: #ffc107;
+    --danger-color: #dc3545;
+}
+
+body {
+    background-color: var(--primary-bg);
+    color: var(--text-color);
+    font-family: 'Roboto', 'Segoe UI', sans-serif;
+}
+
+/* 侧边栏样式 */
+.sidebar {
+    background-color: var(--secondary-bg);
+    border-right: 1px solid var(--border-color);
+    height: 100vh;
+    position: fixed;
+    z-index: 100;
+}
+
+.sidebar .logo {
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+
+.main-content {
+    margin-left: 16.66667%; /* col-md-2的宽度 */
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.page-title {
+    font-weight: 600;
+    font-size: 1.75rem;
+    color: var(--text-color);
+}
+
+/* 卡片样式 */
+.card {
+    background-color: var(--secondary-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+.card .card-title {
+    font-weight: 600;
+}
+
+.stat-icon {
+    opacity: 0.8;
+}
+
+/* 表格样式 */
+.table {
+    margin-bottom: 0;
+}
+
+.table thead th {
+    border-top: none;
+    border-bottom: 2px solid var(--border-color);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 1px;
+}
+
+.table-dark {
+    background-color: var(--secondary-bg);
+    color: var(--text-color);
+}
+
+.table-dark td, .table-dark th {
+    border-color: var(--border-color);
+}
+
+/* 表单样式 */
+.form-control, .form-select {
+    background-color: var(--secondary-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+}
+
+.form-control:focus, .form-select:focus {
+    background-color: var(--secondary-bg);
+    border-color: var(--accent-color);
+    color: var(--text-color);
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.form-control::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.form-label {
+    font-weight: 500;
+}
+
+/* 按钮样式 */
+.btn {
+    border-radius: 4px;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    transition: all 0.3s ease;
+}
+
+.btn-primary {
+    background-color: var(--accent-color);
+    border-color: var(--accent-color);
+}
+
+.btn-primary:hover {
+    background-color: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+/* 徽章样式 */
+.badge {
+    font-weight: 500;
+    padding: 0.5em 0.7em;
+    border-radius: 4px;
+}
+
+/* 模态框样式 */
+.modal-content {
+    background-color: var(--secondary-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.modal-header {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modal-footer {
+    border-top: 1px solid var(--border-color);
+}
+
+/* 动画效果 */
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(13, 110, 253, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(13, 110, 253, 0);
+    }
+}
+
+.run-task:active {
+    animation: pulse 1.5s infinite;
+}
+
+/* 科技感装饰 */
+.tech-border {
+    position: relative;
+    overflow: hidden;
+}
+
+.tech-border::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent-color), transparent);
+    animation: running-light 5s infinite linear;
+}
+
+@keyframes running-light {
+    0% {
+        left: -100%;
+    }
+    100% {
+        left: 100%;
+    }
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .sidebar {
+        width: 100%;
+        height: auto;
+        position: relative;
+    }
+    
+    .main-content {
+        margin-left: 0;
+    }
+}
+
+/* 数据加载动画 */
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    border-left-color: var(--accent-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+} 

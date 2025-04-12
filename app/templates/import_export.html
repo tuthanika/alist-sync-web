@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+
+{% block title %}数据导入导出 - Alist-Sync{% endblock %}
+
+{% block page_title %}数据导入导出{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 导出系统数据 -->
+    <div class="col-md-6 mb-4">
+        <div class="card bg-dark text-light">
+            <div class="card-header bg-dark bg-opacity-50">
+                <h5><i class="bi bi-download me-2"></i>导出系统数据</h5>
+            </div>
+            <div class="card-body">
+                <p>导出当前系统的所有配置数据，包括：</p>
+                <ul>
+                    <li>用户数据 (users.json)</li>
+                    <li>连接配置 (connections.json)</li>
+                    <li>任务配置 (tasks.json)</li>
+                    <li>系统设置 (settings.json)</li>
+                </ul>
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle-fill me-2"></i>导出的数据可用于备份或迁移到其他系统。
+                </div>
+                <button id="export-btn" class="btn btn-primary mt-3">
+                    <i class="bi bi-download me-2"></i>导出数据
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 导入系统数据 -->
+    <div class="col-md-6 mb-4">
+        <div class="card bg-dark text-light">
+            <div class="card-header bg-dark bg-opacity-50">
+                <h5><i class="bi bi-upload me-2"></i>导入系统数据</h5>
+            </div>
+            <div class="card-body">
+                <p>导入系统配置数据，将覆盖当前系统的所有配置。</p>
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>导入数据将替换当前系统的所有配置，所有连接和任务数据将被完全覆盖而不是追加。系统会自动备份当前数据。
+                </div>
+                <div class="mb-3">
+                    <label for="import-file" class="form-label">选择导出的JSON文件</label>
+                    <input type="file" class="form-control" id="import-file" accept=".json">
+                </div>
+                <button id="import-btn" class="btn btn-warning mt-3" disabled>
+                    <i class="bi bi-upload me-2"></i>导入数据
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 导入结果模态框 -->
+<div class="modal fade" id="import-result-modal" tabindex="-1" aria-labelledby="importResultModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header">
+                <h5 class="modal-title" id="importResultModalLabel">导入结果</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body" id="import-result-content">
+                <!-- 结果内容将在JS中动态填充 -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    $(document).ready(function() {
+        // 导出功能
+        $('#export-btn').click(function() {
+            // 显示加载动画
+            $(this).html('<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>导出中...');
+            $(this).prop('disabled', true);
+            
+            $.ajax({
+                url: '/api/export',
+                method: 'GET',
+                success: function(response) {
+                    if (response.status === 'success') {
+                        // 创建下载链接
+                        const exportData = JSON.stringify(response.data, null, 2);
+                        const blob = new Blob([exportData], {type: 'application/json'});
+                        const url = URL.createObjectURL(blob);
+                        
+                        // 创建下载元素并触发下载
+                        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `alist-sync-export-${timestamp}.json`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    } else {
+                        alert('导出失败: ' + response.message);
+                    }
+                },
+                error: function(xhr) {
+                    let errorMsg = '导出失败';
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        errorMsg = response.message || errorMsg;
+                    } catch (e) {
+                        errorMsg = '导出失败，服务器错误';
+                    }
+                    alert(errorMsg);
+                },
+                complete: function() {
+                    // 恢复按钮状态
+                    $('#export-btn').html('<i class="bi bi-download me-2"></i>导出数据');
+                    $('#export-btn').prop('disabled', false);
+                }
+            });
+        });
+        
+        // 启用/禁用导入按钮
+        $('#import-file').on('change', function() {
+            $('#import-btn').prop('disabled', !this.files.length);
+        });
+        
+        // 导入功能
+        $('#import-btn').click(function() {
+            const fileInput = document.getElementById('import-file');
+            if (!fileInput.files.length) {
+                alert('请选择要导入的文件');
+                return;
+            }
+            
+            // 显示加载动画
+            $(this).html('<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>导入中...');
+            $(this).prop('disabled', true);
+            
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    const importData = JSON.parse(e.target.result);
+                    
+                    // 确认导入
+                    if (!confirm('导入将覆盖现有配置数据，所有连接和任务数据将被完全替换而不是追加，确认继续？')) {
+                        $('#import-btn').html('<i class="bi bi-upload me-2"></i>导入数据');
+                        $('#import-btn').prop('disabled', false);
+                        return;
+                    }
+                    
+                    // 发送导入请求
+                    $.ajax({
+                        url: '/api/import',
+                        method: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify(importData),
+                        success: function(response) {
+                            // 在模态框中显示结果
+                            let resultHTML = '';
+                            
+                            if (response.status === 'success') {
+                                resultHTML += '<div class="alert alert-success mb-3">';
+                                resultHTML += '<i class="bi bi-check-circle-fill me-2"></i>' + response.message;
+                                resultHTML += '</div>';
+                            } else {
+                                resultHTML += '<div class="alert alert-danger mb-3">';
+                                resultHTML += '<i class="bi bi-x-circle-fill me-2"></i>' + response.message;
+                                resultHTML += '</div>';
+                            }
+                            
+                            // 添加详细信息
+                            if (response.details) {
+                                resultHTML += '<h6>详细信息：</h6>';
+                                resultHTML += '<ul class="list-group list-group-flush bg-dark">';
+                                
+                                // 显示导入格式信息
+                                if (response.details.format) {
+                                    resultHTML += '<li class="list-group-item bg-dark text-light border-secondary">';
+                                    let formatDesc = '标准格式';
+                                    if (response.details.format === 'alist_sync_base_config') {
+                                        formatDesc = 'AList-Sync基本配置格式';
+                                    } else if (response.details.format === 'alist_sync_sync_config') {
+                                        formatDesc = 'AList-Sync同步任务配置格式';
+                                    }
+                                    resultHTML += '导入格式: ' + formatDesc;
+                                    resultHTML += '</li>';
+                                }
+                                
+                                // 处理备份信息
+                                if (response.details.backup_dir) {
+                                    resultHTML += '<li class="list-group-item bg-dark text-light border-secondary">';
+                                    resultHTML += '备份目录: ' + response.details.backup_dir;
+                                    resultHTML += '</li>';
+                                }
+                                
+                                // 处理各类数据导入结果
+                                const dataTypes = ['users', 'connections', 'tasks', 'settings'];
+                                for (const type of dataTypes) {
+                                    if (response.details[type]) {
+                                        resultHTML += '<li class="list-group-item bg-dark text-light border-secondary">';
+                                        resultHTML += type + ': ' + response.details[type];
+                                        resultHTML += '</li>';
+                                    }
+                                }
+                                
+                                // 处理调度器信息
+                                if (response.details.scheduler) {
+                                    resultHTML += '<li class="list-group-item bg-dark text-light border-secondary">';
+                                    resultHTML += '调度器: ' + response.details.scheduler;
+                                    resultHTML += '</li>';
+                                }
+                                
+                                if (response.details.scheduler_error) {
+                                    resultHTML += '<li class="list-group-item bg-dark text-light border-secondary text-warning">';
+                                    resultHTML += '调度器错误: ' + response.details.scheduler_error;
+                                    resultHTML += '</li>';
+                                }
+                                
+                                resultHTML += '</ul>';
+                            }
+                            
+                            $('#import-result-content').html(resultHTML);
+                            
+                            // 显示结果模态框
+                            new bootstrap.Modal(document.getElementById('import-result-modal')).show();
+                            
+                            // 如果成功，刷新页面
+                            if (response.status === 'success') {
+                                setTimeout(function() {
+                                    window.location.reload();
+                                }, 3000);
+                            }
+                        },
+                        error: function(xhr) {
+                            let errorMsg = '导入失败';
+                            let details = {};
+                            
+                            try {
+                                const response = JSON.parse(xhr.responseText);
+                                errorMsg = response.message || errorMsg;
+                                details = response.details || {};
+                            } catch (e) {
+                                errorMsg = '导入失败，服务器错误';
+                            }
+                            
+                            // 构建错误信息HTML
+                            let resultHTML = '<div class="alert alert-danger mb-3">';
+                            resultHTML += '<i class="bi bi-x-circle-fill me-2"></i>' + errorMsg;
+                            resultHTML += '</div>';
+                            
+                            // 添加详细信息
+                            if (Object.keys(details).length > 0) {
+                                resultHTML += '<h6>错误详情：</h6>';
+                                resultHTML += '<ul class="list-group list-group-flush bg-dark">';
+                                for (const [key, value] of Object.entries(details)) {
+                                    resultHTML += '<li class="list-group-item bg-dark text-light border-secondary">';
+                                    resultHTML += key + ': ' + value;
+                                    resultHTML += '</li>';
+                                }
+                                resultHTML += '</ul>';
+                            }
+                            
+                            $('#import-result-content').html(resultHTML);
+                            new bootstrap.Modal(document.getElementById('import-result-modal')).show();
+                        },
+                        complete: function() {
+                            // 恢复按钮状态
+                            $('#import-btn').html('<i class="bi bi-upload me-2"></i>导入数据');
+                            $('#import-btn').prop('disabled', false);
+                            
+                            // 清空文件输入
+                            $('#import-file').val('');
+                        }
+                    });
+                } catch (e) {
+                    alert('文件格式错误，请上传有效的JSON文件');
+                    $('#import-btn').html('<i class="bi bi-upload me-2"></i>导入数据');
+                    $('#import-btn').prop('disabled', false);
+                }
+            };
+            
+            reader.onerror = function() {
+                alert('读取文件失败');
+                $('#import-btn').html('<i class="bi bi-upload me-2"></i>导入数据');
+                $('#import-btn').prop('disabled', false);
+            };
+            
+            reader.readAsText(file);
+        });
+    });
+</script>
+{% endblock %} 

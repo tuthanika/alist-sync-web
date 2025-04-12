@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}用户资料 - Alist-Sync{% endblock %}
+
+{% block page_title %}用户资料{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 左侧用户信息卡片 -->
+    <div class="col-md-4 mb-4">
+        <div class="card h-100 tech-border">
+            <div class="card-body d-flex flex-column align-items-center text-center p-4">
+                <div class="mb-4 mt-2">
+                    <div class="d-flex justify-content-center align-items-center bg-primary bg-opacity-10 rounded-circle" style="width: 100px; height: 100px;">
+                        <i class="bi bi-person-fill text-primary" style="font-size: 3rem;"></i>
+                    </div>
+                </div>
+                
+                <h4 class="card-title mb-1">{{ session.username }}</h4>
+                <p class="text-muted small">账户ID: {{ session.user_id }}</p>
+                
+                <div class="mt-3 w-100">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-muted">账户类型</span>
+                        <span>管理员</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted">上次登录</span>
+                        <span id="last-login">加载中...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 右侧表单 -->
+    <div class="col-md-8">
+        <!-- 消息提示 -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show mb-4" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <!-- 修改密码表单 -->
+        <div class="card mb-4 tech-border">
+            <div class="card-header bg-transparent border-bottom border-dark">
+                <h5 class="mb-0">
+                    <i class="bi bi-key-fill me-2 text-primary"></i>
+                    修改密码
+                </h5>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('auth.profile') }}">
+                    <input type="hidden" name="action" value="change_password">
+                    
+                    <div class="mb-3">
+                        <label for="current_password" class="form-label">当前密码</label>
+                        <input type="password" class="form-control" id="current_password" name="current_password" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="new_password" class="form-label">新密码</label>
+                        <input type="password" class="form-control" id="new_password" name="new_password" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="confirm_password" class="form-label">确认新密码</label>
+                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                    </div>
+                    
+                    <div class="text-end">
+                        <button type="submit" class="btn btn-primary px-4">
+                            <i class="bi bi-check-lg me-2"></i>更新密码
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- 修改用户名表单 -->
+        <div class="card tech-border">
+            <div class="card-header bg-transparent border-bottom border-dark">
+                <h5 class="mb-0">
+                    <i class="bi bi-person-fill me-2 text-primary"></i>
+                    修改用户名
+                </h5>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('auth.profile') }}">
+                    <input type="hidden" name="action" value="change_username">
+                    
+                    <div class="mb-3">
+                        <label for="new_username" class="form-label">新用户名</label>
+                        <input type="text" class="form-control" id="new_username" name="new_username" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="password" class="form-label">当前密码（确认身份）</label>
+                        <input type="password" class="form-control" id="password" name="password" required>
+                    </div>
+                    
+                    <div class="text-end">
+                        <button type="submit" class="btn btn-primary px-4">
+                            <i class="bi bi-check-lg me-2"></i>更新用户名
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 获取用户的最后登录时间（示例）
+    // 实际应用中可以通过API获取
+    const now = new Date();
+    const options = { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    };
+    document.getElementById('last-login').textContent = now.toLocaleDateString('zh-CN', options);
+    
+    // 密码验证
+    const form = document.querySelector('form[name="action"][value="change_password"]');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const newPassword = document.getElementById('new_password').value;
+            const confirmPassword = document.getElementById('confirm_password').value;
+            
+            if (newPassword !== confirmPassword) {
+                e.preventDefault();
+                alert('两次输入的密码不一致，请重新输入。');
+            }
+        });
+    }
+});
+</script>
+{% endblock %} 

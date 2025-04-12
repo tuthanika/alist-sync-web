@@ -1,23 +1,47 @@
+# Git相关
 .git
 .github
 .gitignore
-__pycache__
-*.pyc
-*.pyo
-*.pyd
+
+# 环境和缓存文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 .Python
-env
-pip-log.txt
-pip-delete-this-directory.txt
-.tox
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.log
-.pytest_cache
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
 .env
 .venv
-.DS_Store
+venv/
+ENV/
+
+# IDE相关
+.idea
+.vscode
+*.swp
+*.swo
+
+# Docker相关
+Dockerfile
+.dockerignore
+
+# 测试相关
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover 

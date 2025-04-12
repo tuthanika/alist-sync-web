@@ -1,0 +1,1397 @@
+{% extends "base.html" %}
+
+{% block title %}任务管理 - Alist-Sync{% endblock %}
+
+{% block page_title %}同步任务管理{% endblock %}
+
+{% block header_buttons %}
+<!-- 移除重复的添加任务按钮 -->
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card bg-dark-subtle">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">任务列表</h5>
+                <div>
+                    <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addTaskModal">
+                        <i class="bi bi-plus-lg"></i> 新增任务
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>任务名称</th>
+                                <th>源连接</th>
+                                <th>目标连接</th>
+                                <th>同步模式</th>
+                                <th>创建时间</th>
+                                <th>上次运行</th>
+                                <th>下次运行</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tasks-table">
+                            {% if tasks %}
+                                {% for task in tasks %}
+                                <tr>
+                                    <td>{{ task.id }}</td>
+                                    <td>{{ task.name }}</td>
+                                    <td>{{ task.source_connection_name }}</td>
+                                    <td>{{ task.target_connection_names }}</td>
+                                    <td>
+                                        {% if task.sync_type == 'file_sync' %}
+                                        <span class="badge bg-info">文件同步</span>
+                                        {% elif task.sync_type == 'file_move' %}
+                                        <span class="badge bg-primary">文件移动</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ task.created_at }}</td>
+                                    <td>{{ task.last_run or "从未" }}</td>
+                                    <td>{{ task.next_run or "未计划" }}</td>
+                                    <td>
+                                        {% if task.status == 'running' %}
+                                        <span class="badge bg-primary">运行中</span>
+                                        {% elif task.status == 'completed' %}
+                                        <span class="badge bg-success">已完成</span>
+                                        {% elif task.status == 'failed' %}
+                                        <span class="badge bg-danger">失败</span>
+                                        {% elif task.status == 'pending' %}
+                                        <span class="badge bg-secondary">等待中</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-primary run-task" data-task-id="{{ task.id }}">
+                                                <i class="bi bi-play-fill"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-info edit-task" data-task-id="{{ task.id }}">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-danger delete-task" data-task-id="{{ task.id }}">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-secondary view-instances" data-task-id="{{ task.id }}" data-task-name="{{ task.name }}">
+                                                <i class="bi bi-list-ul"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="9" class="text-center">暂无任务</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 添加任务模态框 -->
+<div class="modal fade" id="addTaskModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header">
+                <h5 class="modal-title">添加同步任务</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="taskForm">
+                    <div class="mb-3">
+                        <label for="taskName" class="form-label">任务名称</label>
+                        <input type="text" class="form-control bg-dark text-light" id="taskName" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="connectionSelector" class="form-label">选择连接器</label>
+                        <select class="form-select bg-dark text-light" id="connectionSelector" required>
+                            <option value="">选择连接器</option>
+                            <!-- 通过JavaScript动态添加连接选项 -->
+                        </select>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="sourceConnection" class="form-label">源连接</label>
+                            <select class="form-select bg-dark text-light" id="sourceConnection" required>
+                                <option value="">选择源连接</option>
+                                <!-- 根据选择的连接器动态加载存储列表 -->
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="targetConnections" class="form-label">目标连接</label>
+                            <select class="form-select bg-dark text-light" id="targetConnections" multiple required>
+                                <!-- 目标连接为多选 -->
+                            </select>
+                            <div class="form-text text-muted">按住Ctrl键可多选</div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="sourcePath" class="form-label">源路径</label>
+                            <input type="text" class="form-control bg-dark text-light" id="sourcePath" placeholder="/" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="targetPath" class="form-label">目标路径</label>
+                            <input type="text" class="form-control bg-dark text-light" id="targetPath" placeholder="/" required>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="syncType" class="form-label">同步模式</label>
+                        <select class="form-select bg-dark text-light" id="syncType" required>
+                            <option value="file_sync">文件同步</option>
+                            <option value="file_move">文件移动</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="schedule" class="form-label">计划 (Cron 表达式，留空表示手动)</label>
+                        <input type="text" class="form-control bg-dark text-light" id="schedule" placeholder="*/30 * * * *">
+                        <div class="form-text text-muted">示例：*/30 * * * * (每30分钟)</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="fileFilter" class="form-label">文件过滤 (正则表达式，留空表示无过滤)</label>
+                        <input type="text" class="form-control bg-dark text-light" id="fileFilter" placeholder="\.jpg$|\.png$">
+                    </div>
+                    
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="taskEnabled" checked>
+                        <label class="form-check-label" for="taskEnabled">启用任务</label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="saveTaskBtn">保存任务</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑任务模态框 -->
+<div class="modal fade" id="editTaskModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header">
+                <h5 class="modal-title">编辑同步任务</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editTaskForm">
+                    <input type="hidden" id="editTaskId">
+                    <div class="mb-3">
+                        <label for="editTaskName" class="form-label">任务名称</label>
+                        <input type="text" class="form-control bg-dark text-light" id="editTaskName" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="editConnectionSelector" class="form-label">选择连接器</label>
+                        <select class="form-select bg-dark text-light" id="editConnectionSelector" required>
+                            <option value="">选择连接器</option>
+                            <!-- 通过JavaScript动态添加连接选项 -->
+                        </select>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="editSourceConnection" class="form-label">源连接</label>
+                            <select class="form-select bg-dark text-light" id="editSourceConnection" required>
+                                <option value="">选择源连接</option>
+                                <!-- 根据选择的连接器动态加载存储列表 -->
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="editTargetConnections" class="form-label">目标连接</label>
+                            <select class="form-select bg-dark text-light" id="editTargetConnections" multiple required>
+                                <!-- 目标连接为多选 -->
+                            </select>
+                            <div class="form-text text-muted">按住Ctrl键可多选</div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="editSourcePath" class="form-label">源路径</label>
+                            <input type="text" class="form-control bg-dark text-light" id="editSourcePath" placeholder="/" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="editTargetPath" class="form-label">目标路径</label>
+                            <input type="text" class="form-control bg-dark text-light" id="editTargetPath" placeholder="/" required>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="editSyncType" class="form-label">同步模式</label>
+                        <select class="form-select bg-dark text-light" id="editSyncType" required>
+                            <option value="file_sync">文件同步</option>
+                            <option value="file_move">文件移动</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="editSchedule" class="form-label">计划 (Cron 表达式，留空表示手动)</label>
+                        <input type="text" class="form-control bg-dark text-light" id="editSchedule" placeholder="*/30 * * * *">
+                        <div class="form-text text-muted">示例：*/30 * * * * (每30分钟)</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="editFileFilter" class="form-label">文件过滤 (正则表达式，留空表示无过滤)</label>
+                        <input type="text" class="form-control bg-dark text-light" id="editFileFilter" placeholder="\.jpg$|\.png$">
+                    </div>
+                    
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="editTaskEnabled" checked>
+                        <label class="form-check-label" for="editTaskEnabled">启用任务</label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="updateTaskBtn">更新任务</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 确认删除模态框 -->
+<div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header">
+                <h5 class="modal-title">确认删除</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>确定要删除此任务吗？该操作不可恢复。</p>
+                <input type="hidden" id="deleteTaskId">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">确认删除</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 任务实例列表模态框 -->
+<div class="modal fade" id="taskInstancesModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header">
+                <h5 class="modal-title">任务实例列表</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <h6 id="instancesTaskName" class="mb-3"></h6>
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>开始时间</th>
+                                <th>结束时间</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="instances-table">
+                            <tr>
+                                <td colspan="5" class="text-center">加载中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 任务日志查看模态框 -->
+<div class="modal fade" id="taskLogModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header">
+                <h5 class="modal-title">任务执行日志</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <h6 id="logTaskName" class="mb-3"></h6>
+                <div class="bg-dark-subtle p-3 text-light" style="border-radius: 5px; max-height: 500px; overflow-y: auto;">
+                    <pre id="task-log-content" class="mb-0" style="white-space: pre-wrap;"></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" id="refreshLogBtn">刷新</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 全局变量，用于存储连接数据
+        let globalConnections = [];
+        
+        // 加载所有连接
+        loadConnections();
+        
+        // 连接选择器变更事件
+        document.getElementById('connectionSelector').addEventListener('change', function() {
+            const connId = this.value;
+            if (connId) {
+                loadStorages(connId);
+            } else {
+                // 清空存储列表
+                document.getElementById('sourceConnection').innerHTML = '<option value="">选择源连接</option>';
+                document.getElementById('targetConnections').innerHTML = '';
+            }
+        });
+        
+        // 编辑模式连接选择器变更事件
+        document.getElementById('editConnectionSelector').addEventListener('change', function() {
+            const connId = this.value;
+            if (connId) {
+                loadStoragesForEdit(connId);
+            } else {
+                // 清空存储列表
+                document.getElementById('editSourceConnection').innerHTML = '<option value="">选择源连接</option>';
+                document.getElementById('editTargetConnections').innerHTML = '';
+            }
+        });
+        
+        // 查看任务实例按钮
+        document.querySelectorAll('.view-instances').forEach(button => {
+            button.addEventListener('click', function() {
+                const taskId = this.getAttribute('data-task-id');
+                const taskName = this.getAttribute('data-task-name');
+                
+                // 显示任务名称
+                document.getElementById('instancesTaskName').textContent = `任务: ${taskName} (ID: ${taskId})`;
+                
+                // 加载任务实例列表
+                loadTaskInstances(taskId);
+                
+                // 显示模态框
+                new bootstrap.Modal(document.getElementById('taskInstancesModal')).show();
+            });
+        });
+        
+        // 刷新日志按钮
+        document.getElementById('refreshLogBtn').addEventListener('click', function() {
+            const instanceId = this.getAttribute('data-instance-id');
+            if (instanceId) {
+                loadTaskLog(instanceId);
+            }
+        });
+        
+        // 保存任务按钮
+        document.getElementById('saveTaskBtn').addEventListener('click', function() {
+            // 验证必填字段
+            const taskName = document.getElementById('taskName');
+            if (!taskName.value.trim()) {
+                alert('请输入任务名称');
+                taskName.focus();
+                return;
+            }
+            
+            // 获取选择的源连接和目标连接
+            const sourceConn = document.getElementById('sourceConnection');
+            const targetConns = [];
+            document.querySelectorAll('#targetConnections option:checked').forEach(option => {
+                targetConns.push(option.value);
+            });
+            
+            if (!sourceConn.value) {
+                alert('请选择源连接');
+                sourceConn.focus();
+                return;
+            }
+            
+            if (targetConns.length === 0) {
+                alert('请至少选择一个目标连接');
+                document.getElementById('targetConnections').focus();
+                return;
+            }
+            
+            // 禁用按钮，显示加载状态
+            this.disabled = true;
+            this.innerHTML = '<i class="bi bi-hourglass-split"></i> 保存中...';
+            
+            // 准备表单数据
+            const taskData = {
+                name: taskName.value,
+                connection_id: document.getElementById('connectionSelector').value || 1,
+                source_connection_id: sourceConn.value,
+                source_connection_name: sourceConn.options[sourceConn.selectedIndex].text,
+                target_connection_ids: targetConns,
+                target_connection_names: Array.from(document.querySelectorAll('#targetConnections option:checked')).map(opt => opt.text).join(', '),
+                source_path: document.getElementById('sourcePath').value,
+                target_path: document.getElementById('targetPath').value,
+                sync_type: document.getElementById('syncType').value,
+                schedule: document.getElementById('schedule').value,
+                file_filter: document.getElementById('fileFilter').value,
+                enabled: document.getElementById('taskEnabled').checked
+            };
+            
+            console.log('准备保存任务数据:', taskData);
+            
+            // 如果没有选择连接器，自动使用第一个连接ID
+            if (!taskData.connection_id && globalConnections && globalConnections.length > 0) {
+                taskData.connection_id = globalConnections[0].connection_id;
+                console.log('未选择连接器，自动使用第一个连接ID:', taskData.connection_id);
+            }
+            
+            // 发送AJAX请求保存任务
+            fetch('/api/tasks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(taskData),
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('网络响应错误');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === 'success') {
+                    showAlert('任务添加成功', 'success');
+                    // 关闭模态框
+                    $('#addTaskModal').modal('hide');
+                    // 刷新任务列表而不是整个页面
+                    loadTasks();
+                    
+                    // 重新加载调度器以更新任务计划
+                    setTimeout(() => {
+                        fetch('/api/scheduler/reload', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            }
+                        })
+                        .then(response => response.json())
+                        .then(result => {
+                            console.log('调度器已重载:', result);
+                            // 在调度器重载后再次刷新，确保下次运行时间更新
+                            setTimeout(() => {
+                                loadTasks();
+                            }, 1000);
+                        })
+                        .catch(err => {
+                            console.error('调度器重载失败:', err);
+                        });
+                    }, 500);
+                } else {
+                    throw new Error(data.message || '保存失败');
+                }
+            })
+            .catch(error => {
+                console.error('保存任务失败:', error);
+                alert('保存任务失败: ' + error.message);
+            })
+            .finally(() => {
+                // 恢复按钮状态
+                this.disabled = false;
+                this.innerHTML = '保存任务';
+            });
+        });
+        
+        // 编辑任务按钮
+        document.querySelectorAll('.edit-task').forEach(button => {
+            button.addEventListener('click', function() {
+                const taskId = this.getAttribute('data-task-id');
+                
+                // 显示加载状态
+                this.disabled = true;
+                const originalHTML = this.innerHTML;
+                this.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+                
+                // 通过API获取任务信息
+                fetch(`/api/tasks/${taskId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('获取任务信息失败');
+                    }
+                    return response.json();
+                })
+                .then(task => {
+                    // 调试输出任务数据
+                    console.log('获取到的任务数据:', task);
+                    
+                    // 填充表单
+                    document.getElementById('editTaskId').value = task.id;
+                    document.getElementById('editTaskName').value = task.name;
+                    
+                    // 对于连接器，需要获取具体的连接ID
+                    // 在task.json中通常没有直接保存connection_id，需要从源连接信息中提取
+                    
+                    // 设置源路径和目标路径
+                    document.getElementById('editSourcePath').value = task.source_path || '/';
+                    document.getElementById('editTargetPath').value = task.target_path || '/';
+                    document.getElementById('editSyncType').value = task.sync_type || 'file_sync';
+                    document.getElementById('editSchedule').value = task.schedule || '';
+                    document.getElementById('editFileFilter').value = task.file_filter || '';
+                    document.getElementById('editTaskEnabled').checked = task.enabled !== false;
+                    
+                    // 先加载所有连接，然后选择任务使用的连接并加载存储列表
+                    loadConnectionsForEdit(task);
+                    
+                    // 显示编辑模态框
+                    new bootstrap.Modal(document.getElementById('editTaskModal')).show();
+                })
+                .catch(error => {
+                    console.error('获取任务信息失败:', error);
+                    alert('获取任务信息失败: ' + error.message);
+                })
+                .finally(() => {
+                    // 恢复按钮状态
+                    this.disabled = false;
+                    this.innerHTML = originalHTML;
+                });
+            });
+        });
+        
+        // 更新任务按钮
+        document.getElementById('updateTaskBtn').addEventListener('click', function() {
+            // 验证必填字段
+            const editTaskName = document.getElementById('editTaskName');
+            if (!editTaskName.value.trim()) {
+                showEditMessage('请输入任务名称', 'warning');
+                editTaskName.focus();
+                return;
+            }
+            
+            // 获取任务ID
+            const taskId = document.getElementById('editTaskId').value;
+            
+            // 禁用按钮，显示加载状态
+            this.disabled = true;
+            const originalHTML = this.innerHTML;
+            this.innerHTML = '<i class="bi bi-hourglass-split"></i> 更新中...';
+            
+            // 获取选择的源连接和目标连接
+            const sourceConn = document.getElementById('editSourceConnection');
+            const targetConns = [];
+            document.querySelectorAll('#editTargetConnections option:checked').forEach(option => {
+                targetConns.push(option.value);
+            });
+            
+            if (!sourceConn.value) {
+                showEditMessage('请选择源连接', 'warning');
+                sourceConn.focus();
+                return;
+            }
+            
+            if (targetConns.length === 0) {
+                showEditMessage('请至少选择一个目标连接', 'warning');
+                document.getElementById('editTargetConnections').focus();
+                return;
+            }
+            
+            // 准备表单数据
+            const taskData = {
+                name: editTaskName.value,
+                connection_id: document.getElementById('editConnectionSelector').value || 1,
+                source_connection_id: sourceConn.value,
+                source_connection_name: sourceConn.options[sourceConn.selectedIndex].text,
+                target_connection_ids: targetConns,
+                target_connection_names: Array.from(document.querySelectorAll('#editTargetConnections option:checked')).map(opt => opt.text).join(', '),
+                source_path: document.getElementById('editSourcePath').value,
+                target_path: document.getElementById('editTargetPath').value,
+                sync_type: document.getElementById('editSyncType').value,
+                schedule: document.getElementById('editSchedule').value,
+                file_filter: document.getElementById('editFileFilter').value,
+                enabled: document.getElementById('editTaskEnabled').checked
+            };
+            
+            console.log('准备更新任务数据:', taskData);
+            
+            // 如果没有选择连接器，自动使用第一个连接ID
+            if (!taskData.connection_id && globalConnections && globalConnections.length > 0) {
+                taskData.connection_id = globalConnections[0].connection_id;
+                console.log('未选择连接器，自动使用第一个连接ID:', taskData.connection_id);
+            }
+            
+            // 发送AJAX请求更新任务
+            fetch(`/api/tasks/${taskId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(taskData),
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('网络响应错误');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === 'success') {
+                    showAlert(taskId ? '任务更新成功' : '任务创建成功', 'success');
+                    // 关闭模态框并刷新任务列表
+                    $('#editTaskModal').modal('hide');
+                    loadTasks();
+                    
+                    // 重新加载调度器以更新任务计划
+                    setTimeout(() => {
+                        fetch('/api/scheduler/reload', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            }
+                        })
+                        .then(response => response.json())
+                        .then(result => {
+                            console.log('调度器已重载:', result);
+                            // 在调度器重载后再次刷新，确保下次运行时间更新
+                            setTimeout(() => {
+                                loadTasks();
+                            }, 1000);
+                        })
+                        .catch(err => {
+                            console.error('调度器重载失败:', err);
+                        });
+                    }, 500);
+                } else {
+                    showAlert(data.message || '保存任务失败', 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('更新任务失败:', error);
+                showAlert('更新任务失败: ' + error.message, 'danger');
+            })
+            .finally(() => {
+                // 恢复按钮状态
+                this.disabled = false;
+                this.innerHTML = originalHTML;
+            });
+        });
+        
+        // 删除按钮事件
+        document.querySelectorAll('.delete-task').forEach(button => {
+            button.addEventListener('click', function() {
+                const taskId = this.getAttribute('data-task-id');
+                document.getElementById('deleteTaskId').value = taskId;
+                new bootstrap.Modal(document.getElementById('confirmDeleteModal')).show();
+            });
+        });
+        
+        // 确认删除按钮
+        document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+            const taskId = document.getElementById('deleteTaskId').value;
+            
+            // 禁用按钮，显示加载状态
+            this.disabled = true;
+            this.innerHTML = '<i class="bi bi-hourglass-split"></i> 删除中...';
+            
+            // 发送AJAX请求删除任务
+            fetch(`/api/tasks/${taskId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('网络响应错误');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === 'success') {
+                    alert(`任务 ${taskId} 已删除`);
+                    // 关闭模态框
+                    bootstrap.Modal.getInstance(document.getElementById('confirmDeleteModal')).hide();
+                    // 刷新任务列表而不是整个页面
+                    loadTasks();
+                } else {
+                    throw new Error(data.message || '删除失败');
+                }
+            })
+            .catch(error => {
+                console.error('删除任务失败:', error);
+                alert('删除任务失败: ' + error.message);
+            })
+            .finally(() => {
+                // 恢复按钮状态
+                this.disabled = false;
+                this.innerHTML = '确认删除';
+            });
+        });
+        
+        // 运行任务按钮
+        document.querySelectorAll('.run-task').forEach(button => {
+            button.addEventListener('click', function() {
+                const taskId = this.getAttribute('data-task-id');
+                
+                // 显示加载状态
+                const originalHTML = this.innerHTML;
+                this.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+                this.disabled = true;
+                
+                // 发送AJAX请求运行任务
+                fetch(`/api/tasks/${taskId}/run`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('网络响应错误');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.status === 'success') {
+                        // 显示任务运行结果
+                        if (data.instance_id) {
+                            // 如果返回了实例ID，提示查看日志
+                            const result = confirm(`任务 ${taskId} 已开始运行，是否查看执行日志？`);
+                            if (result) {
+                                // 显示任务名称
+                                const taskName = this.closest('tr').querySelector('td:nth-child(2)').textContent;
+                                document.getElementById('logTaskName').textContent = `任务: ${taskName} (实例 ID: ${data.instance_id})`;
+                                
+                                // 设置刷新按钮的实例ID
+                                document.getElementById('refreshLogBtn').setAttribute('data-instance-id', data.instance_id);
+                                
+                                // 加载任务日志
+                                loadTaskLog(data.instance_id);
+                                
+                                // 显示日志模态框
+                                new bootstrap.Modal(document.getElementById('taskLogModal')).show();
+                            }
+                        } else {
+                            alert(`任务 ${taskId} 已开始运行`);
+                        }
+                        // 刷新任务列表而不是整个页面
+                        loadTasks();
+                        
+                        // 重新加载调度器以更新任务计划
+                        setTimeout(() => {
+                            fetch('/api/scheduler/reload', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                }
+                            })
+                            .then(response => response.json())
+                            .then(result => {
+                                console.log('调度器已重载:', result);
+                                // 在调度器重载后再次刷新，确保下次运行时间更新
+                                setTimeout(() => {
+                                    loadTasks();
+                                }, 1000);
+                            })
+                            .catch(err => {
+                                console.error('调度器重载失败:', err);
+                            });
+                        }, 500);
+                    } else {
+                        throw new Error(data.message || '运行失败');
+                    }
+                })
+                .catch(error => {
+                    console.error('运行任务失败:', error);
+                    alert('运行任务失败: ' + error.message);
+                })
+                .finally(() => {
+                    // 恢复按钮状态
+                    this.innerHTML = originalHTML;
+                    this.disabled = false;
+                });
+            });
+        });
+        
+        // 辅助函数：加载所有连接
+        function loadConnections() {
+            fetch('/api/connections')
+            .then(response => response.json())
+            .then(connections => {
+                // 存储连接数据到全局变量
+                globalConnections = connections;
+                
+                const connectionSelector = document.getElementById('connectionSelector');
+                connectionSelector.innerHTML = '<option value="">选择连接器</option>';
+                
+                if (connections && connections.length > 0) {
+                    connections.forEach(conn => {
+                        const option = document.createElement('option');
+                        option.value = conn.connection_id;
+                        option.textContent = conn.name;
+                        connectionSelector.appendChild(option);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('加载连接失败:', error);
+                alert('加载连接列表失败');
+            });
+        }
+        
+        // 辅助函数：加载编辑模式的连接
+        function loadConnectionsForEdit(task) {
+            fetch('/api/connections')
+            .then(response => response.json())
+            .then(connections => {
+                const editConnectionSelector = document.getElementById('editConnectionSelector');
+                editConnectionSelector.innerHTML = '<option value="">选择连接器</option>';
+                
+                if (connections && connections.length > 0) {
+                    connections.forEach(conn => {
+                        const option = document.createElement('option');
+                        option.value = conn.connection_id;
+                        option.textContent = conn.name;
+                        editConnectionSelector.appendChild(option);
+                    });
+                    
+                    // 使用任务中的连接ID填充编辑表单
+                    // 通常，任务中都应该有这个连接器ID
+                    const connId = task.connection_id || task.conn_id;
+                    
+                    // 打印任务数据，帮助调试
+                    console.log('任务数据:', task);
+                    
+                    if (connId) {
+                        // 设置选中的连接器
+                        editConnectionSelector.value = connId;
+                        // 加载连接器的存储列表
+                        loadStoragesForEdit(connId, task);
+                    } else {
+                        console.warn('任务数据中没有找到connection_id字段');
+                        // 尝试从第一个连接加载存储列表
+                        if (connections.length > 0) {
+                            const firstConnId = connections[0].connection_id;
+                            editConnectionSelector.value = firstConnId;
+                            loadStoragesForEdit(firstConnId, task);
+                        }
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('加载连接失败:', error);
+                alert('加载连接列表失败');
+            });
+        }
+        
+        // 辅助函数：加载存储列表
+        function loadStorages(connId) {
+            // 显示加载中状态
+            document.getElementById('sourceConnection').innerHTML = '<option value="">加载中...</option>';
+            document.getElementById('targetConnections').innerHTML = '<option value="">加载中...</option>';
+            
+            fetch(`/api/storages?conn_id=${connId}`)
+            .then(response => response.json())
+            .then(data => {
+                const sourceConnection = document.getElementById('sourceConnection');
+                const targetConnections = document.getElementById('targetConnections');
+                
+                // 重置选择器
+                sourceConnection.innerHTML = '<option value="">选择源连接</option>';
+                targetConnections.innerHTML = '';
+                
+                if (data.status === 'success' && data.data && data.data.length > 0) {
+                    // 填充存储列表
+                    data.data.forEach(storage => {
+                        // 添加到源连接
+                        const sourceOption = document.createElement('option');
+                        sourceOption.value = storage.id || storage.name;
+                        sourceOption.textContent = storage.name;
+                        sourceConnection.appendChild(sourceOption);
+                        
+                        // 添加到目标连接
+                        const targetOption = document.createElement('option');
+                        targetOption.value = storage.id || storage.name;
+                        targetOption.textContent = storage.name;
+                        targetConnections.appendChild(targetOption);
+                    });
+                } else {
+                    alert('获取存储列表失败或存储列表为空');
+                }
+            })
+            .catch(error => {
+                console.error('加载存储列表失败:', error);
+                alert('加载存储列表失败: ' + error.message);
+                
+                // 重置选择器
+                document.getElementById('sourceConnection').innerHTML = '<option value="">选择源连接</option>';
+                document.getElementById('targetConnections').innerHTML = '';
+            });
+        }
+        
+        // 辅助函数：加载编辑模式的存储列表
+        function loadStoragesForEdit(connId, task = null) {
+            // 显示加载中状态
+            document.getElementById('editSourceConnection').innerHTML = '<option value="">加载中...</option>';
+            document.getElementById('editTargetConnections').innerHTML = '<option value="">加载中...</option>';
+            
+            fetch(`/api/storages?conn_id=${connId}`)
+            .then(response => response.json())
+            .then(data => {
+                const editSourceConnection = document.getElementById('editSourceConnection');
+                const editTargetConnections = document.getElementById('editTargetConnections');
+                
+                // 重置选择器
+                editSourceConnection.innerHTML = '<option value="">选择源连接</option>';
+                editTargetConnections.innerHTML = '';
+                
+                if (data.status === 'success' && data.data && data.data.length > 0) {
+                    // 填充存储列表
+                    data.data.forEach(storage => {
+                        // 添加到源连接
+                        const sourceOption = document.createElement('option');
+                        sourceOption.value = storage.id || storage.name;
+                        sourceOption.textContent = storage.name;
+                        editSourceConnection.appendChild(sourceOption);
+                        
+                        // 添加到目标连接
+                        const targetOption = document.createElement('option');
+                        targetOption.value = storage.id || storage.name;
+                        targetOption.textContent = storage.name;
+                        editTargetConnections.appendChild(targetOption);
+                    });
+                    
+                    // 如果有任务数据，设置选中的值
+                    if (task) {
+                        console.log('正在填充源连接和目标连接:', task);
+                        
+                        // 设置源连接
+                        if (task.source_connection_id) {
+                            console.log('设置源连接:', task.source_connection_id);
+                            editSourceConnection.value = task.source_connection_id;
+                        }
+                        
+                        // 设置目标连接（多选）
+                        if (task.target_connection_ids && Array.isArray(task.target_connection_ids)) {
+                            console.log('设置目标连接:', task.target_connection_ids);
+                            // 由于是select multiple，需要逐个设置option的selected属性
+                            Array.from(editTargetConnections.options).forEach(option => {
+                                option.selected = task.target_connection_ids.includes(option.value);
+                            });
+                        }
+                    }
+                } else {
+                    console.error('获取存储列表失败或为空:', data);
+                    alert('获取存储列表失败或存储列表为空');
+                }
+            })
+            .catch(error => {
+                console.error('加载存储列表失败:', error);
+                alert('加载存储列表失败: ' + error.message);
+                
+                // 重置选择器
+                document.getElementById('editSourceConnection').innerHTML = '<option value="">选择源连接</option>';
+                document.getElementById('editTargetConnections').innerHTML = '';
+            });
+        }
+        
+        // 辅助函数：加载任务实例列表
+        function loadTaskInstances(taskId) {
+            const instancesTable = document.getElementById('instances-table');
+            instancesTable.innerHTML = '<tr><td colspan="5" class="text-center">加载中...</td></tr>';
+            
+            fetch(`/api/task-instances?task_id=${taskId}`)
+            .then(response => response.json())
+            .then(instances => {
+                if (instances && instances.length > 0) {
+                    // 清空表格
+                    instancesTable.innerHTML = '';
+                    
+                    // 填充实例数据
+                    instances.forEach(instance => {
+                        const row = document.createElement('tr');
+                        
+                        // 添加实例信息
+                        row.innerHTML = `
+                            <td>${instance.task_instances_id}</td>
+                            <td>${instance.start_time_formatted}</td>
+                            <td>${instance.end_time_formatted || '进行中'}</td>
+                            <td>
+                                ${getStatusBadge(instance.status)}
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-info view-log" data-instance-id="${instance.task_instances_id}" data-task-name="${instance.task_name}">
+                                    <i class="bi bi-file-text"></i> 查看日志
+                                </button>
+                            </td>
+                        `;
+                        
+                        instancesTable.appendChild(row);
+                    });
+                    
+                    // 添加查看日志事件
+                    document.querySelectorAll('.view-log').forEach(button => {
+                        button.addEventListener('click', function() {
+                            const instanceId = this.getAttribute('data-instance-id');
+                            const taskName = this.getAttribute('data-task-name');
+                            
+                            // 显示任务名称
+                            document.getElementById('logTaskName').textContent = `任务: ${taskName} (实例 ID: ${instanceId})`;
+                            
+                            // 设置刷新按钮的实例ID
+                            document.getElementById('refreshLogBtn').setAttribute('data-instance-id', instanceId);
+                            
+                            // 加载任务日志
+                            loadTaskLog(instanceId);
+                            
+                            // 显示日志模态框
+                            new bootstrap.Modal(document.getElementById('taskLogModal')).show();
+                        });
+                    });
+                } else {
+                    instancesTable.innerHTML = '<tr><td colspan="5" class="text-center">暂无任务实例记录</td></tr>';
+                }
+            })
+            .catch(error => {
+                console.error('加载任务实例失败:', error);
+                instancesTable.innerHTML = '<tr><td colspan="5" class="text-center text-danger">加载失败: ' + error.message + '</td></tr>';
+            });
+        }
+        
+        // 辅助函数：加载任务日志
+        function loadTaskLog(instanceId) {
+            const logContent = document.getElementById('task-log-content');
+            logContent.textContent = '加载中...';
+            
+            fetch(`/api/task-instances/${instanceId}/logs`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success' && data.logs && data.logs.length > 0) {
+                    logContent.textContent = data.logs.join('\n');
+                } else {
+                    logContent.textContent = '没有找到日志记录';
+                }
+            })
+            .catch(error => {
+                console.error('加载任务日志失败:', error);
+                logContent.textContent = '加载日志失败: ' + error.message;
+            });
+        }
+        
+        // 辅助函数：获取状态徽章HTML
+        function getStatusBadge(status) {
+            switch (status) {
+                case 'running':
+                    return '<span class="badge bg-primary">运行中</span>';
+                case 'completed':
+                    return '<span class="badge bg-success">已完成</span>';
+                case 'failed':
+                    return '<span class="badge bg-danger">失败</span>';
+                default:
+                    return '<span class="badge bg-secondary">未知</span>';
+            }
+        }
+        
+        // 辅助函数：显示编辑模态框中的消息
+        function showEditMessage(message, type = 'warning') {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `alert alert-${type} alert-dismissible fade show`;
+            messageDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            
+            // 获取编辑模态框的消息容器
+            const messageContainer = document.getElementById('editTaskModalMessages') || document.querySelector('#editTaskModal .modal-body');
+            
+            // 清除已有消息
+            const existingMessages = messageContainer.querySelectorAll('.alert');
+            existingMessages.forEach(msg => msg.remove());
+            
+            // 添加新消息到容器的顶部
+            messageContainer.insertBefore(messageDiv, messageContainer.firstChild);
+            
+            // 3秒后自动消失
+            setTimeout(() => {
+                messageDiv.classList.remove('show');
+                setTimeout(() => {
+                    if (messageDiv.parentNode) {
+                        messageDiv.parentNode.removeChild(messageDiv);
+                    }
+                }, 150);
+            }, 3000);
+        }
+
+        // 辅助函数：显示全局消息提示
+        function showAlert(message, type = 'info') {
+            // 创建警告容器
+            const alertContainer = document.createElement('div');
+            alertContainer.className = 'position-fixed top-0 end-0 p-3';
+            alertContainer.style.zIndex = '9999';
+            
+            // 创建警告元素
+            const alertEl = document.createElement('div');
+            alertEl.className = `alert alert-${type} alert-dismissible fade show`;
+            alertEl.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            
+            // 添加到容器和页面
+            alertContainer.appendChild(alertEl);
+            document.body.appendChild(alertContainer);
+            
+            // 3秒后自动关闭
+            setTimeout(() => {
+                alertEl.classList.remove('show');
+                setTimeout(() => {
+                    if (alertContainer.parentNode) {
+                        document.body.removeChild(alertContainer);
+                    }
+                }, 150);
+            }, 3000);
+        }
+        
+        // 辅助函数：加载任务列表
+        function loadTasks() {
+            fetch('/api/tasks')
+            .then(response => response.json())
+            .then(tasks => {
+                const tasksTable = document.getElementById('tasks-table');
+                
+                if (tasks && tasks.length > 0) {
+                    // 清空表格并填充新数据
+                    tasksTable.innerHTML = '';
+                    
+                    tasks.forEach(task => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${task.id}</td>
+                            <td>${task.name}</td>
+                            <td>${task.source_connection_name}</td>
+                            <td>${task.target_connection_names}</td>
+                            <td>
+                                ${task.sync_type === 'file_sync' 
+                                    ? '<span class="badge bg-info">文件同步</span>' 
+                                    : '<span class="badge bg-primary">文件移动</span>'}
+                            </td>
+                            <td>${task.created_at}</td>
+                            <td>${task.last_run || "从未"}</td>
+                            <td>${task.next_run || "未计划"}</td>
+                            <td>
+                                ${getStatusBadge(task.status)}
+                            </td>
+                            <td>
+                                <div class="btn-group">
+                                    <button class="btn btn-sm btn-primary run-task" data-task-id="${task.id}">
+                                        <i class="bi bi-play-fill"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-info edit-task" data-task-id="${task.id}">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-danger delete-task" data-task-id="${task.id}">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-secondary view-instances" data-task-id="${task.id}" data-task-name="${task.name}">
+                                        <i class="bi bi-list-ul"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        `;
+                        tasksTable.appendChild(row);
+                    });
+                    
+                    // 重新绑定按钮事件
+                    attachTaskButtonEvents();
+                } else {
+                    tasksTable.innerHTML = '<tr><td colspan="10" class="text-center">暂无任务</td></tr>';
+                }
+            })
+            .catch(error => {
+                console.error('加载任务列表失败:', error);
+                document.getElementById('tasks-table').innerHTML = 
+                    '<tr><td colspan="10" class="text-center text-danger">加载任务列表失败</td></tr>';
+            });
+        }
+        
+        // 为新加载的任务按钮绑定事件
+        function attachTaskButtonEvents() {
+            // 编辑任务按钮
+            document.querySelectorAll('.edit-task').forEach(button => {
+                button.addEventListener('click', function() {
+                    const taskId = this.getAttribute('data-task-id');
+                    
+                    // 显示加载状态
+                    this.disabled = true;
+                    const originalHTML = this.innerHTML;
+                    this.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+                    
+                    // 通过API获取任务信息
+                    fetch(`/api/tasks/${taskId}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('获取任务信息失败');
+                        }
+                        return response.json();
+                    })
+                    .then(task => {
+                        // 调试输出任务数据
+                        console.log('获取到的任务数据:', task);
+                        
+                        // 填充表单
+                        document.getElementById('editTaskId').value = task.id;
+                        document.getElementById('editTaskName').value = task.name;
+                        
+                        // 设置源路径和目标路径
+                        document.getElementById('editSourcePath').value = task.source_path || '/';
+                        document.getElementById('editTargetPath').value = task.target_path || '/';
+                        document.getElementById('editSyncType').value = task.sync_type || 'file_sync';
+                        document.getElementById('editSchedule').value = task.schedule || '';
+                        document.getElementById('editFileFilter').value = task.file_filter || '';
+                        document.getElementById('editTaskEnabled').checked = task.enabled !== false;
+                        
+                        // 先加载所有连接，然后选择任务使用的连接并加载存储列表
+                        loadConnectionsForEdit(task);
+                        
+                        // 显示编辑模态框
+                        new bootstrap.Modal(document.getElementById('editTaskModal')).show();
+                    })
+                    .catch(error => {
+                        console.error('获取任务信息失败:', error);
+                        alert('获取任务信息失败: ' + error.message);
+                    })
+                    .finally(() => {
+                        // 恢复按钮状态
+                        this.disabled = false;
+                        this.innerHTML = originalHTML;
+                    });
+                });
+            });
+            
+            // 删除按钮事件
+            document.querySelectorAll('.delete-task').forEach(button => {
+                button.addEventListener('click', function() {
+                    const taskId = this.getAttribute('data-task-id');
+                    document.getElementById('deleteTaskId').value = taskId;
+                    new bootstrap.Modal(document.getElementById('confirmDeleteModal')).show();
+                });
+            });
+            
+            // 运行任务按钮
+            document.querySelectorAll('.run-task').forEach(button => {
+                button.addEventListener('click', function() {
+                    const taskId = this.getAttribute('data-task-id');
+                    
+                    // 显示加载状态
+                    const originalHTML = this.innerHTML;
+                    this.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+                    this.disabled = true;
+                    
+                    // 发送AJAX请求运行任务
+                    fetch(`/api/tasks/${taskId}/run`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('网络响应错误');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data.status === 'success') {
+                            // 显示任务运行结果
+                            if (data.instance_id) {
+                                // 如果返回了实例ID，提示查看日志
+                                const result = confirm(`任务 ${taskId} 已开始运行，是否查看执行日志？`);
+                                if (result) {
+                                    // 显示任务名称
+                                    const taskName = this.closest('tr').querySelector('td:nth-child(2)').textContent;
+                                    document.getElementById('logTaskName').textContent = `任务: ${taskName} (实例 ID: ${data.instance_id})`;
+                                    
+                                    // 设置刷新按钮的实例ID
+                                    document.getElementById('refreshLogBtn').setAttribute('data-instance-id', data.instance_id);
+                                    
+                                    // 加载任务日志
+                                    loadTaskLog(data.instance_id);
+                                    
+                                    // 显示日志模态框
+                                    new bootstrap.Modal(document.getElementById('taskLogModal')).show();
+                                }
+                            } else {
+                                alert(`任务 ${taskId} 已开始运行`);
+                            }
+                            // 刷新任务列表而不是整个页面
+                            loadTasks();
+                            
+                            // 重新加载调度器以更新任务计划
+                            setTimeout(() => {
+                                fetch('/api/scheduler/reload', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    }
+                                })
+                                .then(response => response.json())
+                                .then(result => {
+                                    console.log('调度器已重载:', result);
+                                    // 在调度器重载后再次刷新，确保下次运行时间更新
+                                    setTimeout(() => {
+                                        loadTasks();
+                                    }, 1000);
+                                })
+                                .catch(err => {
+                                    console.error('调度器重载失败:', err);
+                                });
+                            }, 500);
+                        } else {
+                            throw new Error(data.message || '运行失败');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('运行任务失败:', error);
+                        alert('运行任务失败: ' + error.message);
+                    })
+                    .finally(() => {
+                        // 恢复按钮状态
+                        this.innerHTML = originalHTML;
+                        this.disabled = false;
+                    });
+                });
+            });
+            
+            // 查看任务实例按钮
+            document.querySelectorAll('.view-instances').forEach(button => {
+                button.addEventListener('click', function() {
+                    const taskId = this.getAttribute('data-task-id');
+                    const taskName = this.getAttribute('data-task-name');
+                    
+                    // 显示任务名称
+                    document.getElementById('instancesTaskName').textContent = `任务: ${taskName} (ID: ${taskId})`;
+                    
+                    // 加载任务实例列表
+                    loadTaskInstances(taskId);
+                    
+                    // 显示模态框
+                    new bootstrap.Modal(document.getElementById('taskInstancesModal')).show();
+                });
+            });
+        }
+    });
+</script>
+{% endblock %} 

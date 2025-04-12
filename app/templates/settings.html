@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+
+{% block title %}系统设置 - Alist-Sync{% endblock %}
+
+{% block page_title %}系统设置{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card bg-dark-subtle">
+            <div class="card-body">
+                <form id="settingsForm">
+                    <div class="row mb-4">
+                        <h5 class="border-bottom pb-2">性能配置</h5>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="maxConcurrentTasks" class="form-label">最大并发任务数</label>
+                            <input type="number" class="form-control bg-dark text-light" id="maxConcurrentTasks" 
+                                value="{{ settings.max_concurrent_tasks }}" min="1" max="10">
+                            <div class="form-text">同时执行的最大任务数量，建议根据系统性能设置</div>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="defaultRetryCount" class="form-label">默认重试次数</label>
+                            <input type="number" class="form-control bg-dark text-light" id="defaultRetryCount" 
+                                value="{{ settings.default_retry_count }}" min="0" max="10">
+                            <div class="form-text">连接失败后的重试次数</div>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="defaultBlockSize" class="form-label">文件块大小 (字节)</label>
+                            <input type="number" class="form-control bg-dark text-light" id="defaultBlockSize" 
+                                value="{{ settings.default_block_size }}" min="1048576" step="1048576">
+                            <div class="form-text">大文件传输时的块大小，默认 10MB (10485760 字节)</div>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="bandwidthLimit" class="form-label">带宽限制 (KB/s)</label>
+                            <input type="number" class="form-control bg-dark text-light" id="bandwidthLimit" 
+                                value="{{ settings.bandwidth_limit }}" min="0" step="1024">
+                            <div class="form-text">0 表示无限制，建议在有多个任务时设置限制</div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-4">
+                        <h5 class="border-bottom pb-2">日志设置</h5>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="logLevel" class="form-label">日志级别</label>
+                            <select class="form-select bg-dark text-light" id="logLevel">
+                                <option value="DEBUG" {% if settings.log_level == 'DEBUG' %}selected{% endif %}>DEBUG</option>
+                                <option value="INFO" {% if settings.log_level == 'INFO' %}selected{% endif %}>INFO</option>
+                                <option value="WARN" {% if settings.log_level == 'WARN' %}selected{% endif %}>WARN</option>
+                                <option value="ERROR" {% if settings.log_level == 'ERROR' %}selected{% endif %}>ERROR</option>
+                            </select>
+                            <div class="form-text">控制记录的日志详细程度</div>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="keepLogDays" class="form-label">任务日志保留天数</label>
+                            <input type="number" class="form-control bg-dark text-light" id="keepLogDays" 
+                                value="{{ settings.keep_log_days }}" min="1" max="30">
+                            <div class="form-text">超过此天数的日志将被自动清理</div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-4">
+                        <h5 class="border-bottom pb-2">高级选项</h5>
+                        
+                        <div class="col-md-12 mb-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="debugMode" 
+                                    {% if settings.debug_mode %}checked{% endif %}>
+                                <label class="form-check-label" for="debugMode">调试模式</label>
+                            </div>
+                            <div class="form-text">启用调试模式会记录更详细的信息</div>
+                        </div>
+                        
+                        <div class="col-md-12 mb-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="enableWebhook" 
+                                    {% if settings.enable_webhook %}checked{% endif %}>
+                                <label class="form-check-label" for="enableWebhook">启用通知</label>
+                            </div>
+                            <div class="form-text">任务完成后发送通知</div>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="notificationType" class="form-label">通知方式</label>
+                            <select class="form-select bg-dark text-light" id="notificationType">
+                                <option value="webhook" {% if settings.notification_type == 'webhook' %}selected{% endif %}>自定义 Webhook</option>
+                                <option value="feishu" {% if settings.notification_type == 'feishu' %}selected{% endif %}>飞书机器人</option>
+                                <option value="dingtalk" {% if settings.notification_type == 'dingtalk' %}selected{% endif %}>钉钉机器人</option>
+                                <option value="wecom" {% if settings.notification_type == 'wecom' %}selected{% endif %}>企业微信机器人</option>
+                                <option value="bark" {% if settings.notification_type == 'bark' %}selected{% endif %}>Bark</option>
+                                <option value="pushplus" {% if settings.notification_type == 'pushplus' %}selected{% endif %}>PushPlus</option>
+                                <option value="telegram" {% if settings.notification_type == 'telegram' %}selected{% endif %}>Telegram</option>
+                            </select>
+                            <div class="form-text">选择通知发送方式</div>
+                        </div>
+                        
+                        <div class="col-md-12 mb-3 webhook-settings">
+                            <label for="webhookUrl" class="form-label">Webhook URL</label>
+                            <input type="url" class="form-control bg-dark text-light" id="webhookUrl" 
+                                value="{{ settings.webhook_url }}" placeholder="https://your-webhook-url.com">
+                            <div class="form-text">Webhook接口地址</div>
+                        </div>
+                        
+                        <!-- 钉钉特有设置 -->
+                        <div class="col-md-12 mb-3 dingtalk-settings" style="display: none;">
+                            <label for="dingtalkSecret" class="form-label">钉钉加签密钥</label>
+                            <input type="text" class="form-control bg-dark text-light" id="dingtalkSecret" 
+                                value="{{ settings.dingtalk_secret }}" placeholder="SEC000000000000000000000">
+                            <div class="form-text">钉钉机器人安全设置中的加签密钥，如未启用加签可留空</div>
+                        </div>
+                        
+                        <!-- Bark特有设置 -->
+                        <div class="col-md-12 mb-3 bark-settings" style="display: none;">
+                            <label for="barkSound" class="form-label">Bark提示音</label>
+                            <input type="text" class="form-control bg-dark text-light" id="barkSound" 
+                                value="{{ settings.bark_sound|default('default') }}" placeholder="default">
+                            <div class="form-text">Bark通知的提示音，默认为default</div>
+                        </div>
+                        
+                        <!-- Telegram特有设置 -->
+                        <div class="telegram-settings" style="display: none;">
+                            <div class="col-md-12 mb-3">
+                                <label for="telegramBotToken" class="form-label">Telegram Bot Token</label>
+                                <input type="text" class="form-control bg-dark text-light" id="telegramBotToken" 
+                                    value="{{ settings.telegram_bot_token }}" placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ">
+                                <div class="form-text">通过 BotFather 创建的机器人Token</div>
+                            </div>
+                            <div class="col-md-12 mb-3">
+                                <label for="telegramChatId" class="form-label">Telegram Chat ID</label>
+                                <input type="text" class="form-control bg-dark text-light" id="telegramChatId" 
+                                    value="{{ settings.telegram_chat_id }}" placeholder="-123456789">
+                                <div class="form-text">接收消息的聊天ID，可通过 @userinfobot 获取</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="refreshInterval" class="form-label">刷新间隔 (秒)</label>
+                        <input type="number" class="form-control bg-dark text-light" id="refreshInterval" value="{{ settings.refresh_interval|default(60) }}">
+                        <div class="form-text text-muted">仪表盘自动刷新间隔，设为0禁用自动刷新</div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mt-4">
+                        <button type="button" class="btn btn-danger" id="resetSettingsBtn">恢复默认设置</button>
+                        <button type="button" class="btn btn-primary" id="saveSettingsBtn">保存设置</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 确认重置模态框 -->
+<div class="modal fade" id="confirmResetModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header">
+                <h5 class="modal-title">确认重置</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>确定要将所有设置恢复为默认值吗？该操作不可恢复。</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" id="confirmResetBtn">确认重置</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 根据通知类型显示相应的配置选项
+        function updateNotificationSettings() {
+            const notificationType = document.getElementById('notificationType').value;
+            
+            // 隐藏所有特定设置
+            document.querySelectorAll('.webhook-settings, .dingtalk-settings, .bark-settings, .telegram-settings').forEach(el => {
+                el.style.display = 'none';
+            });
+            
+            // 显示通用设置
+            document.querySelector('.webhook-settings').style.display = 'block';
+            
+            // 显示特定设置
+            if (notificationType === 'dingtalk') {
+                document.querySelector('.dingtalk-settings').style.display = 'block';
+            } else if (notificationType === 'bark') {
+                document.querySelector('.bark-settings').style.display = 'block';
+            } else if (notificationType === 'telegram') {
+                document.querySelector('.telegram-settings').style.display = 'block';
+            }
+        }
+        
+        // 初始化显示
+        updateNotificationSettings();
+        
+        // 监听选择变化
+        document.getElementById('notificationType').addEventListener('change', updateNotificationSettings);
+        
+        // 保存设置
+        document.getElementById('saveSettingsBtn').addEventListener('click', function() {
+            // 收集表单数据
+            const settings = {
+                max_concurrent_tasks: parseInt(document.getElementById('maxConcurrentTasks').value),
+                default_retry_count: parseInt(document.getElementById('defaultRetryCount').value),
+                default_block_size: parseInt(document.getElementById('defaultBlockSize').value),
+                bandwidth_limit: parseInt(document.getElementById('bandwidthLimit').value),
+                log_level: document.getElementById('logLevel').value,
+                keep_log_days: parseInt(document.getElementById('keepLogDays').value),
+                debug_mode: document.getElementById('debugMode').checked,
+                enable_webhook: document.getElementById('enableWebhook').checked,
+                notification_type: document.getElementById('notificationType').value,
+                webhook_url: document.getElementById('webhookUrl').value,
+                dingtalk_secret: document.getElementById('dingtalkSecret').value,
+                bark_sound: document.getElementById('barkSound').value,
+                telegram_bot_token: document.getElementById('telegramBotToken').value,
+                telegram_chat_id: document.getElementById('telegramChatId').value,
+                refresh_interval: parseInt(document.getElementById('refreshInterval').value)
+            };
+            
+            // 进行简单验证
+            if (settings.max_concurrent_tasks < 1 || settings.max_concurrent_tasks > 10) {
+                alert('最大并发任务数应在 1-10 之间');
+                return;
+            }
+            
+            if (settings.enable_webhook && !settings.webhook_url) {
+                alert('启用 Webhook 时必须提供 URL');
+                return;
+            }
+            
+            // 发送到服务器
+            fetch('/api/settings', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(settings)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('设置已保存');
+                } else {
+                    alert('保存设置失败: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('保存设置错误:', error);
+                alert('保存设置失败，请检查网络连接');
+            });
+        });
+        
+        // 重置设置
+        document.getElementById('resetSettingsBtn').addEventListener('click', function() {
+            // 显示确认对话框
+            new bootstrap.Modal(document.getElementById('confirmResetModal')).show();
+        });
+        
+        // 确认重置
+        document.getElementById('confirmResetBtn').addEventListener('click', function() {
+            // 模拟重置操作
+            document.getElementById('maxConcurrentTasks').value = '3';
+            document.getElementById('defaultRetryCount').value = '3';
+            document.getElementById('defaultBlockSize').value = '10485760';
+            document.getElementById('bandwidthLimit').value = '0';
+            document.getElementById('logLevel').value = 'INFO';
+            document.getElementById('keepLogDays').value = '7';
+            document.getElementById('debugMode').checked = false;
+            document.getElementById('enableWebhook').checked = false;
+            document.getElementById('notificationType').value = 'webhook';
+            document.getElementById('webhookUrl').value = '';
+            document.getElementById('dingtalkSecret').value = '';
+            document.getElementById('barkSound').value = 'default';
+            document.getElementById('telegramBotToken').value = '';
+            document.getElementById('telegramChatId').value = '-123456789';
+            document.getElementById('refreshInterval').value = '60';
+            
+            // 隐藏模态框
+            bootstrap.Modal.getInstance(document.getElementById('confirmResetModal')).hide();
+            
+            // 提示成功
+            alert('设置已重置为默认值');
+        });
+    });
+</script>
+{% endblock %} 

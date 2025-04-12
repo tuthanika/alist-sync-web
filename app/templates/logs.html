@@ -1,0 +1,431 @@
+{% extends "base.html" %}
+
+{% block title %}日志查看 - Alist-Sync{% endblock %}
+
+{% block page_title %}系统日志{% endblock %}
+
+{% block header_buttons %}
+<div class="btn-group">
+    <button class="btn btn-secondary" id="refreshLogsBtn">
+        <i class="bi bi-arrow-clockwise"></i> 刷新
+    </button>
+    <button class="btn btn-danger" id="clearLogsBtn">
+        <i class="bi bi-trash"></i> 清空日志
+    </button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card bg-dark-subtle">
+            <div class="card-body p-3">
+                <form id="logFilterForm" class="row g-3">
+                    <div class="col-md-3">
+                        <label for="logLevel" class="form-label">日志级别</label>
+                        <select class="form-select bg-dark text-light" id="logLevel">
+                            <option value="">全部级别</option>
+                            <option value="DEBUG">DEBUG</option>
+                            <option value="INFO">INFO</option>
+                            <option value="WARN">WARN</option>
+                            <option value="ERROR">ERROR</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="taskFilter" class="form-label">任务筛选</label>
+                        <select class="form-select bg-dark text-light" id="taskFilter">
+                            <option value="">全部任务</option>
+                            {% for task in tasks %}
+                            <option value="{{ task.id }}">{{ task.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="searchText" class="form-label">关键词搜索</label>
+                        <input type="text" class="form-control bg-dark text-light" id="searchText" placeholder="输入关键词">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="button" class="btn btn-primary w-100" id="applyFilterBtn">应用筛选</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card bg-dark-subtle">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width: 200px;">时间</th>
+                                <th style="width: 80px;">级别</th>
+                                <th style="width: 120px;">任务</th>
+                                <th>消息</th>
+                                <th style="width: 100px;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logs-table">
+                            {% if logs %}
+                                {% for log in logs %}
+                                <tr>
+                                    <td>{{ log.timestamp_formatted }}</td>
+                                    <td>
+                                        {% if log.level == 'ERROR' %}
+                                        <span class="badge bg-danger">ERROR</span>
+                                        {% elif log.level == 'WARN' %}
+                                        <span class="badge bg-warning text-dark">WARN</span>
+                                        {% elif log.level == 'INFO' %}
+                                        <span class="badge bg-info text-dark">INFO</span>
+                                        {% elif log.level == 'DEBUG' %}
+                                        <span class="badge bg-secondary">DEBUG</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if log.task_name %}
+                                            {{ log.task_name }}
+                                        {% elif log.task_id %}
+                                            任务 {{ log.task_id }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ log.message }}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-info view-details" 
+                                               data-log-id="{{ log.id }}" 
+                                               data-timestamp="{{ log.timestamp }}"
+                                               data-bs-toggle="modal" 
+                                               data-bs-target="#logDetailsModal">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="5" class="text-center">暂无日志记录</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 分页控件 -->
+<div class="row mt-4">
+    <div class="col-12">
+        <nav aria-label="Page navigation">
+            <ul class="pagination justify-content-center">
+                <li class="page-item disabled">
+                    <a class="page-link" href="#" tabindex="-1" aria-disabled="true">上一页</a>
+                </li>
+                <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                <li class="page-item"><a class="page-link" href="#">2</a></li>
+                <li class="page-item"><a class="page-link" href="#">3</a></li>
+                <li class="page-item">
+                    <a class="page-link" href="#">下一页</a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+</div>
+
+<!-- 日志详情模态框 -->
+<div class="modal fade" id="logDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header">
+                <h5 class="modal-title">日志详情</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <p><strong>时间：</strong> <span id="detailTimestamp"></span></p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>级别：</strong> <span id="detailLevel"></span></p>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <p><strong>任务：</strong> <span id="detailTask"></span></p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>任务 ID：</strong> <span id="detailTaskId"></span></p>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <p><strong>消息：</strong></p>
+                        <div class="p-3 bg-secondary bg-opacity-25 rounded" id="detailMessage"></div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12">
+                        <p><strong>详细信息：</strong></p>
+                        <pre class="p-3 bg-secondary bg-opacity-25 rounded overflow-auto" style="max-height: 200px;" id="detailData"></pre>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 确认清空日志模态框 -->
+<div class="modal fade" id="confirmClearModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header">
+                <h5 class="modal-title">确认清空</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>确定要清空所有日志记录吗？该操作不可恢复。</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" id="confirmClearBtn">确认清空</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 查看日志详情
+        document.querySelectorAll('.view-details').forEach(button => {
+            button.addEventListener('click', function() {
+                const logId = this.getAttribute('data-log-id');
+                const timestamp = this.getAttribute('data-timestamp');
+                
+                // 从服务器获取日志详情
+                fetch(`/api/logs?timestamp=${timestamp}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success' && data.logs && data.logs.length > 0) {
+                            const logDetails = data.logs[0];
+                            
+                            // 填充模态框数据，使用格式化的时间戳
+                            document.getElementById('detailTimestamp').textContent = logDetails.timestamp_formatted;
+                            document.getElementById('detailLevel').textContent = logDetails.level;
+                            
+                            // 处理任务名称和ID
+                            if (logDetails.task_name) {
+                                document.getElementById('detailTask').textContent = logDetails.task_name;
+                            } else if (logDetails.task_id) {
+                                document.getElementById('detailTask').textContent = `任务 ${logDetails.task_id}`;
+                            } else {
+                                document.getElementById('detailTask').textContent = '未关联任务';
+                            }
+                            
+                            document.getElementById('detailTaskId').textContent = logDetails.task_id || '-';
+                            document.getElementById('detailMessage').textContent = logDetails.message;
+                            document.getElementById('detailData').textContent = JSON.stringify(logDetails.details || {}, null, 2);
+                        } else {
+                            alert('获取日志详情失败: ' + (data.message || '未找到日志'));
+                        }
+                    })
+                    .catch(error => {
+                        console.error('获取日志详情错误:', error);
+                        alert('获取日志详情失败');
+                    });
+            });
+        });
+        
+        // 应用筛选
+        document.getElementById('applyFilterBtn').addEventListener('click', function() {
+            const level = document.getElementById('logLevel').value;
+            const taskId = document.getElementById('taskFilter').value;
+            const searchText = document.getElementById('searchText').value;
+            
+            // 构建查询字符串
+            const queryParams = new URLSearchParams();
+            if (level) queryParams.append('level', level);
+            if (taskId) queryParams.append('task_id', taskId);
+            if (searchText) queryParams.append('search', searchText);
+            
+            // 显示加载中状态
+            const logsTable = document.getElementById('logs-table');
+            logsTable.innerHTML = '<tr><td colspan="5" class="text-center"><div class="loading-spinner mx-auto my-3"></div></td></tr>';
+            
+            // 发送筛选请求
+            fetch(`/api/logs?${queryParams.toString()}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // 清空表格
+                        logsTable.innerHTML = '';
+                        
+                        if (data.logs && data.logs.length > 0) {
+                            // 填充筛选后的日志数据
+                            data.logs.forEach(log => {
+                                const row = document.createElement('tr');
+                                
+                                // 使用格式化的时间戳
+                                const timestampCell = document.createElement('td');
+                                timestampCell.textContent = log.timestamp_formatted;
+                                row.appendChild(timestampCell);
+                                
+                                // 日志级别
+                                const levelCell = document.createElement('td');
+                                const levelBadge = document.createElement('span');
+                                levelBadge.classList.add('badge');
+                                
+                                if (log.level === 'ERROR') {
+                                    levelBadge.classList.add('bg-danger');
+                                    levelBadge.textContent = 'ERROR';
+                                } else if (log.level === 'WARN') {
+                                    levelBadge.classList.add('bg-warning', 'text-dark');
+                                    levelBadge.textContent = 'WARN';
+                                } else if (log.level === 'INFO') {
+                                    levelBadge.classList.add('bg-info', 'text-dark');
+                                    levelBadge.textContent = 'INFO';
+                                } else if (log.level === 'DEBUG') {
+                                    levelBadge.classList.add('bg-secondary');
+                                    levelBadge.textContent = 'DEBUG';
+                                }
+                                
+                                levelCell.appendChild(levelBadge);
+                                row.appendChild(levelCell);
+                                
+                                // 任务名称
+                                const taskCell = document.createElement('td');
+                                if (log.task_name) {
+                                    taskCell.textContent = log.task_name;
+                                } else if (log.task_id) {
+                                    taskCell.textContent = `任务 ${log.task_id}`;
+                                } else {
+                                    taskCell.textContent = '-';
+                                }
+                                row.appendChild(taskCell);
+                                
+                                // 消息
+                                const messageCell = document.createElement('td');
+                                messageCell.textContent = log.message;
+                                row.appendChild(messageCell);
+                                
+                                // 添加"查看"按钮
+                                const actionCell = document.createElement('td');
+                                
+                                const viewButton = document.createElement('button');
+                                viewButton.classList.add('btn', 'btn-sm', 'btn-info', 'view-details');
+                                viewButton.setAttribute('data-log-id', log.id);
+                                viewButton.setAttribute('data-timestamp', log.timestamp);
+                                viewButton.setAttribute('data-bs-toggle', 'modal');
+                                viewButton.setAttribute('data-bs-target', '#logDetailsModal');
+                                
+                                // 添加图标
+                                const icon = document.createElement('i');
+                                icon.classList.add('bi', 'bi-eye');
+                                viewButton.appendChild(icon);
+                                
+                                // 为按钮添加事件监听器
+                                viewButton.addEventListener('click', function() {
+                                    const logId = this.getAttribute('data-log-id');
+                                    const timestamp = this.getAttribute('data-timestamp');
+                                    
+                                    // 从服务器获取日志详情
+                                    fetch(`/api/logs?timestamp=${timestamp}`)
+                                        .then(response => response.json())
+                                        .then(data => {
+                                            if (data.status === 'success' && data.logs && data.logs.length > 0) {
+                                                const logDetails = data.logs[0];
+                                                
+                                                // 填充模态框数据
+                                                document.getElementById('detailTimestamp').textContent = logDetails.timestamp_formatted;
+                                                document.getElementById('detailLevel').textContent = logDetails.level;
+                                                
+                                                // 处理任务名称和ID
+                                                if (logDetails.task_name) {
+                                                    document.getElementById('detailTask').textContent = logDetails.task_name;
+                                                } else if (logDetails.task_id) {
+                                                    document.getElementById('detailTask').textContent = `任务 ${logDetails.task_id}`;
+                                                } else {
+                                                    document.getElementById('detailTask').textContent = '未关联任务';
+                                                }
+                                                
+                                                document.getElementById('detailTaskId').textContent = logDetails.task_id || '-';
+                                                document.getElementById('detailMessage').textContent = logDetails.message;
+                                                document.getElementById('detailData').textContent = JSON.stringify(logDetails.details || {}, null, 2);
+                                            } else {
+                                                alert('获取日志详情失败: ' + (data.message || '未找到日志'));
+                                            }
+                                        })
+                                        .catch(error => {
+                                            console.error('获取日志详情错误:', error);
+                                            alert('获取日志详情失败');
+                                        });
+                                });
+                                
+                                actionCell.appendChild(viewButton);
+                                row.appendChild(actionCell);
+                                
+                                logsTable.appendChild(row);
+                            });
+                        } else {
+                            // 没有符合条件的日志
+                logsTable.innerHTML = '<tr><td colspan="5" class="text-center">没有符合条件的日志记录</td></tr>';
+                        }
+                    } else {
+                        alert('筛选日志失败: ' + data.message);
+                        logsTable.innerHTML = '<tr><td colspan="5" class="text-center text-danger">筛选失败</td></tr>';
+                    }
+                })
+                .catch(error => {
+                    console.error('筛选日志错误:', error);
+                    logsTable.innerHTML = '<tr><td colspan="5" class="text-center text-danger">网络错误，请重试</td></tr>';
+                });
+        });
+        
+        // 刷新日志
+        document.getElementById('refreshLogsBtn').addEventListener('click', function() {
+            window.location.reload();
+        });
+        
+        // 清空日志
+        document.getElementById('clearLogsBtn').addEventListener('click', function() {
+            // 显示确认对话框
+            new bootstrap.Modal(document.getElementById('confirmClearModal')).show();
+        });
+        
+        // 确认清空
+        document.getElementById('confirmClearBtn').addEventListener('click', function() {
+            // 发送清空请求
+            fetch('/api/logs/clear', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // 关闭模态框
+            bootstrap.Modal.getInstance(document.getElementById('confirmClearModal')).hide();
+                    // 刷新页面
+                    window.location.reload();
+                } else {
+                    alert('清空日志失败: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('清空日志错误:', error);
+                alert('网络错误，请重试');
+            });
+        });
+    });
+</script>
+{% endblock %} 
