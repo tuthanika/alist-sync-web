@@ -91,7 +91,20 @@
                     </div>
                     {% endif %}
                     <div class="text-center text-muted small mt-2">
-                        <p>Alist-Sync v1.0</p>
+                        <p>
+                            <span>Alist-Sync v{{ current_version }}</span>
+                            {% if has_update %}
+                            <span class="badge bg-warning text-dark ms-1">新版本 v{{ latest_version }} 可用</span>
+                            {% endif %}
+                        </p>
+                        <div class="d-flex justify-content-center gap-2">
+                            <a href="{{ github_url }}" target="_blank" class="text-muted" title="GitHub">
+                                <i class="bi bi-github"></i> GitHub
+                            </a>
+                            <a href="{{ gitee_url }}" target="_blank" class="text-muted" title="Gitee">
+                                <i class="bi bi-code-slash"></i> Gitee
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>

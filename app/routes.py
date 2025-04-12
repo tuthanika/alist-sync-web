@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, jsonify, current_app, redirect, url_for, session, flash
 from app.utils.sync_manager import SyncManager
+from app.utils.version_checker import get_current_version, has_new_version
 import importlib.util
 import os
 import sys
@@ -16,6 +17,18 @@ from functools import wraps
 main_bp = Blueprint('main', __name__)
 api_bp = Blueprint('api', __name__)
 auth_bp = Blueprint('auth', __name__)
+
+# 全局上下文处理器，为所有模板提供版本信息
+@main_bp.context_processor
+def inject_version_info():
+    has_update, current_version, latest_version = has_new_version()
+    return {
+        'current_version': current_version,
+        'latest_version': latest_version if has_update else None,
+        'has_update': has_update,
+        'github_url': 'https://github.com/xjxjin/alist-sync',
+        'gitee_url': 'https://gitee.com/xjxjin/alist-sync'
+    }
 
 # 认证相关路由
 @auth_bp.route('/login', methods=['GET', 'POST'])
@@ -1058,64 +1071,46 @@ def api_export_data():
 
 @api_bp.route('/import', methods=['POST'])
 def api_import_data():
-    """导入数据并覆盖现有数据"""
-    data_manager = current_app.config['DATA_MANAGER']
-    
+    """导入配置数据"""
     try:
-        import_data = request.json
-        if not import_data:
-            return jsonify({
-                "status": "error",
-                "message": "请提供有效的导入数据"
-            }), 400
-        
-        # 不再验证标准格式的必需键，因为我们支持多种格式
-        # 执行导入，默认进行备份
-        result = data_manager.import_data(import_data)
-        
-        if result["success"]:
-            # 记录日志
-            format_type = result.get("details", {}).get("format", "unknown")
-            data_manager.add_log({
-                "level": "INFO",
-                "message": f"成功导入系统数据(格式: {format_type})",
-                "details": {"backup_dir": result.get("details", {}).get("backup_dir", "")}
-            })
+        if not request.json:
+            return jsonify({"status": "error", "message": "未提供有效的配置数据"}), 400
             
-            # 重新加载调度器
+        data_manager = current_app.config['DATA_MANAGER']
+        import_data = request.json.get('data')
+        
+        if not import_data:
+            return jsonify({"status": "error", "message": "配置数据为空"}), 400
+        
+        # 执行导入操作
+        import_result = data_manager.import_data(import_data)
+        
+        # 如果导入成功且是同步配置，重新加载调度器
+        if import_result.get("success") and import_result.get("details", {}).get("format") == "alist_sync_sync_config":
             sync_manager = current_app.config.get('SYNC_MANAGER')
             if sync_manager:
-                try:
-                    sync_manager.reload_scheduler()
-                    result["details"]["scheduler"] = "调度器已重新加载"
-                except Exception as e:
-                    result["details"]["scheduler_error"] = str(e)
-            
-            return jsonify({
-                "status": "success",
-                "message": result["message"],
-                "details": result["details"]
-            })
-        else:
-            # 记录错误日志
-            data_manager.add_log({
-                "level": "ERROR",
-                "message": f"导入系统数据失败: {result['message']}",
-                "details": result.get("details", {})
-            })
-            
-            return jsonify({
-                "status": "error",
-                "message": result["message"],
-                "details": result["details"]
-            }), 500
-            
+                sync_manager.reload_tasks()
+        
+        return jsonify({"status": "success" if import_result.get("success") else "error", 
+                        "message": import_result.get("message"), 
+                        "details": import_result.get("details")})
+    
     except Exception as e:
-        current_app.logger.error(f"导入数据时发生错误: {str(e)}")
-        return jsonify({
-            "status": "error",
-            "message": f"导入数据失败: {str(e)}"
-        }), 500
+        current_app.logger.error(f"导入数据时出错: {str(e)}")
+        return jsonify({"status": "error", "message": f"导入数据失败: {str(e)}"}), 500
+
+@api_bp.route('/version', methods=['GET'])
+def api_version():
+    """获取系统版本信息"""
+    has_update, current_version, latest_version = has_new_version()
+    
+    return jsonify({
+        "current_version": current_version,
+        "latest_version": latest_version,
+        "has_update": has_update,
+        "github_url": "https://github.com/xjxjin/alist-sync",
+        "gitee_url": "https://gitee.com/xjxjin/alist-sync"
+    })
 
 # 添加Web界面导入导出路由
 @main_bp.route('/import-export')
