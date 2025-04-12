@@ -14,7 +14,7 @@ class Config:
     STATIC_FOLDER = 'static'
     
     # 数据目录
-    DATA_DIR = os.path.join(BASEDIR, 'data')
+    DATA_DIR = os.environ.get('DATA_DIR') or '/app/data'
     
     # 配置文件目录
     CONFIG_DIR = os.path.join(DATA_DIR, 'config')
