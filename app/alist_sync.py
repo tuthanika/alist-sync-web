@@ -13,8 +13,10 @@ def setup_logger():
     """配置日志记录器"""
     # 获取当前文件所在目录
     current_dir = os.path.dirname(os.path.abspath(__file__))
+    # 获取项目根目录
+    project_root = os.path.dirname(current_dir)
     # 创建日志目录
-    log_dir = os.path.join(current_dir, 'data/log')
+    log_dir = os.path.join(project_root, 'data/log')
     os.makedirs(log_dir, exist_ok=True)
 
     # 设置日志文件路径

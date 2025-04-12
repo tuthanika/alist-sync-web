@@ -13,12 +13,15 @@ class Config:
     # 静态文件配置
     STATIC_FOLDER = 'static'
     
+    # 数据目录
+    DATA_DIR = os.path.join(BASEDIR, 'data')
+    
+    # 配置文件目录
+    CONFIG_DIR = os.path.join(DATA_DIR, 'config')
+    
     # 日志配置
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
-    LOG_DIR = os.path.join(BASEDIR, 'app/data/log')
-    
-    # 数据目录
-    DATA_DIR = os.path.join(BASEDIR, 'app/data')
+    LOG_DIR = os.path.join(DATA_DIR, 'log')
     
     # 任务配置
     MAX_CONCURRENT_TASKS = int(os.environ.get('MAX_CONCURRENT_TASKS', 3))
@@ -27,13 +30,14 @@ class Config:
     
     # 任务日志配置
     KEEP_LOG_DAYS = int(os.environ.get('KEEP_LOG_DAYS', 7))
-    TASK_LOGS_DIR = os.path.join(DATA_DIR, 'task_logs')
+    TASK_LOGS_DIR = os.path.join(LOG_DIR, 'task_logs')
     
     # 确保目录存在
     @staticmethod
     def init_app(app):
         os.makedirs(Config.LOG_DIR, exist_ok=True)
         os.makedirs(Config.DATA_DIR, exist_ok=True)
+        os.makedirs(Config.CONFIG_DIR, exist_ok=True)
         os.makedirs(Config.TASK_LOGS_DIR, exist_ok=True)
 
 

@@ -11,8 +11,11 @@ flask_app = None
 
 def init_logger():
     """配置日志记录器"""
+    # 获取当前根目录
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
     # 确保日志目录存在
-    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data/log')
+    log_dir = os.path.join(root_dir, 'data/log')
     os.makedirs(log_dir, exist_ok=True)
     
     # 设置日志文件路径

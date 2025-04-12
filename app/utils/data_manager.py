@@ -10,19 +10,31 @@ class DataManager:
     
     def __init__(self, data_dir=None):
         """初始化数据管理器"""
-        self.data_dir = data_dir or "app/data"
+        # 获取项目根目录
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        
+        # 设置数据目录
+        self.data_dir = data_dir or os.path.join(project_root, "data")
         os.makedirs(self.data_dir, exist_ok=True)
         
+        # 设置配置文件目录
+        self.config_dir = os.path.join(self.data_dir, "config")
+        os.makedirs(self.config_dir, exist_ok=True)
+        
+        # 设置日志目录
+        self.log_dir = os.path.join(self.data_dir, "log")
+        os.makedirs(self.log_dir, exist_ok=True)
+        
         # 定义数据文件路径
-        self.users_file = os.path.join(self.data_dir, "users.json")
-        self.connections_file = os.path.join(self.data_dir, "connections.json")
-        self.tasks_file = os.path.join(self.data_dir, "tasks.json")
-        self.settings_file = os.path.join(self.data_dir, "settings.json")
-        self.logs_file = os.path.join(self.data_dir, "logs.json")
-        self.task_instances_file = os.path.join(self.data_dir, "task_instances.json")
+        self.users_file = os.path.join(self.config_dir, "users.json")
+        self.connections_file = os.path.join(self.config_dir, "connections.json")
+        self.tasks_file = os.path.join(self.config_dir, "tasks.json")
+        self.settings_file = os.path.join(self.config_dir, "settings.json")
+        self.logs_file = os.path.join(self.log_dir, "logs.json")
+        self.task_instances_file = os.path.join(self.config_dir, "task_instances.json")
         
         # 确保任务日志目录存在
-        self.task_logs_dir = os.path.join(self.data_dir, "task_logs")
+        self.task_logs_dir = os.path.join(self.log_dir, "task_logs")
         os.makedirs(self.task_logs_dir, exist_ok=True)
         
         # 创建初始数据文件（如果不存在）
