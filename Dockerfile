@@ -37,10 +37,10 @@ COPY . .
 
 # 设置环境变量
 ENV FLASK_ENV=production
-ENV PORT=5000
+ENV PORT=52441
 
 # 暴露应用程序的端口
-EXPOSE 5000
+EXPOSE 52441
 
 # 运行应用程序
 CMD ["python", "wsgi.py"] 
