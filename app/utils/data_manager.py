@@ -674,6 +674,7 @@ class DataManager:
             format_type = "unknown"
             
             if isinstance(data, dict):
+                # 检测旧版基本配置格式
                 if "baseUrl" in data and "token" in data:
                     # 这是alist_sync基本配置格式
                     format_type = "alist_sync_base_config"
@@ -681,14 +682,37 @@ class DataManager:
                     result["details"]["detected_fields"] = ["baseUrl", "token"]
                     # 转换为标准格式
                     data = self._convert_alist_sync_base_config(data)
+                
+                # 检测旧版同步任务配置格式(两种可能的格式)
                 elif "tasks" in data and isinstance(data["tasks"], list):
-                    if data["tasks"] and all(isinstance(task, dict) and "syncDirs" in task for task in data["tasks"]):
-                        # 这是alist_sync同步任务配置格式
-                        format_type = "alist_sync_sync_config"
-                        result["details"]["format"] = format_type
-                        result["details"]["task_count"] = len(data["tasks"])
-                        # 转换为标准格式
-                        data = self._convert_alist_sync_sync_config(data)
+                    # 检查是旧版格式还是新版格式
+                    if data["tasks"] and all(isinstance(task, dict) for task in data["tasks"]):
+                        old_format = any("->" in task.get("syncDirs", "") for task in data["tasks"] if "syncDirs" in task)
+                        new_format = any(all(key in task for key in ["sourceStorage", "targetStorages", "syncDirs"]) 
+                                        for task in data["tasks"])
+                        
+                        if old_format or new_format:
+                            # 这是alist_sync同步任务配置格式
+                            format_type = "alist_sync_sync_config"
+                            result["details"]["format"] = format_type
+                            result["details"]["task_count"] = len(data["tasks"])
+                            
+                            # 标记配置版本
+                            if new_format:
+                                result["details"]["format_version"] = "新版格式"
+                            else:
+                                result["details"]["format_version"] = "旧版格式"
+                            
+                            # 转换为标准格式
+                            data = self._convert_alist_sync_sync_config(data)
+                        else:
+                            # 检查是否是标准格式
+                            if all(key in data for key in ["users", "connections", "tasks", "settings"]):
+                                format_type = "standard"
+                                result["details"]["format"] = format_type
+                            else:
+                                # 无法识别的格式
+                                raise ValueError("无法识别的任务数据格式，缺少必要字段")
                     else:
                         # 可能是标准格式或无效格式
                         if all(key in data for key in ["users", "connections", "tasks", "settings"]):
@@ -822,48 +846,125 @@ class DataManager:
         Returns:
             dict: 标准格式的配置数据
         """
-        converted_data = {
-            "tasks": []
-        }
+        # 读取现有数据作为基础
+        users = self._read_json(self.users_file)
+        connections = self._read_json(self.connections_file)
+        settings = self._read_json(self.settings_file)
+        
+        # 转换任务列表
+        converted_tasks = []
         
         # 处理每个同步任务
         for i, sync_task in enumerate(config.get("tasks", [])):
-            # 提取source_dir和dst_dir
-            dirs = sync_task.get("syncDirs", "").strip()
-            if not dirs:
-                continue
-                
-            parts = dirs.split("->")
-            if len(parts) != 2:
-                continue
-                
-            source_dir = parts[0].strip()
-            dst_dir = parts[1].strip()
+            # 检查任务的格式类型 - 新旧格式的处理
             
-            # 任务名称(如果没有则生成默认名称)
-            task_name = sync_task.get("name") or f"同步任务 {i+1}"
-            
-            converted_data["tasks"].append({
-                "id": i + 1,
-                "name": task_name,
-                "source_dir": source_dir,
-                "destination_dir": dst_dir,
-                "enabled": sync_task.get("enabled", True),
-                "sync_delete": sync_task.get("syncDel", False),
-                "sync_move": sync_task.get("syncMove", False),
-                "sync_update": True,
-                "use_regex": bool(sync_task.get("regex")),
-                "regex_pattern": sync_task.get("regex", ""),
-                "schedule": self._convert_cron_format(sync_task.get("cron", "")),
-                "file_filter": sync_task.get("excludeDirs", ""),
-                "created_at": self.format_timestamp(int(time.time())),
-                "updated_at": self.format_timestamp(int(time.time())),
-                "last_run": "",
-                "next_run": "",
-                "status": "pending"
-            })
+            # --------- 旧格式处理 ---------
+            if "syncDirs" in sync_task and "->" in sync_task.get("syncDirs", ""):
+                # 旧格式: syncDirs包含"源目录->目标目录"格式
+                
+                # 提取source_dir和dst_dir
+                dirs = sync_task.get("syncDirs", "").strip()
+                if not dirs:
+                    continue
+                    
+                parts = dirs.split("->")
+                if len(parts) != 2:
+                    continue
+                    
+                source_dir = parts[0].strip()
+                dst_dir = parts[1].strip()
+                
+                # 任务名称(如果没有则生成默认名称)
+                task_name = sync_task.get("name") or f"同步任务 {i+1}"
+                
+                converted_tasks.append({
+                    "id": i + 1,
+                    "name": task_name,
+                    "source_dir": source_dir,
+                    "destination_dir": dst_dir,
+                    "enabled": sync_task.get("enabled", True),
+                    "sync_delete": sync_task.get("syncDel", False),
+                    "sync_move": sync_task.get("syncMove", False),
+                    "sync_update": True,
+                    "use_regex": bool(sync_task.get("regex")),
+                    "regex_pattern": sync_task.get("regex", ""),
+                    "schedule": self._convert_cron_format(sync_task.get("cron", "")),
+                    "file_filter": sync_task.get("excludeDirs", ""),
+                    "created_at": self.format_timestamp(int(time.time())),
+                    "updated_at": self.format_timestamp(int(time.time())),
+                    "last_run": "",
+                    "next_run": "",
+                    "status": "pending"
+                })
+            # --------- 新格式处理 ---------
+            elif "syncDirs" in sync_task and "sourceStorage" in sync_task and "targetStorages" in sync_task:
+                # 新格式: 有sourceStorage和targetStorages
+                source_storage = sync_task.get("sourceStorage", "").strip()
+                sync_dirs = sync_task.get("syncDirs", "").strip()
+                
+                # 如果没有源存储或同步目录，跳过
+                if not source_storage or not sync_dirs:
+                    continue
+                
+                # 获取目标存储列表，忽略空值
+                target_storages = [
+                    storage for storage in sync_task.get("targetStorages", [])
+                    if storage and storage.strip()
+                ]
+                
+                # 如果没有目标存储，跳过
+                if not target_storages:
+                    continue
+                
+                # 为每个目标存储创建一个任务
+                for j, target_storage in enumerate(target_storages):
+                    # 跳过目标与源相同的情况
+                    if target_storage == source_storage:
+                        continue
+                    
+                    # 生成任务名称，添加目标信息
+                    task_name = sync_task.get("taskName") or f"同步任务 {i+1}"
+                    if len(target_storages) > 1:
+                        storage_name = target_storage.split('/')[-1] if '/' in target_storage else target_storage
+                        task_name = f"{task_name} - {storage_name}"
+                    
+                    # 格式化源路径和目标路径
+                    source_path = f"{source_storage}/{sync_dirs}"
+                    dest_path = f"{target_storage}/{sync_dirs}"
+                    
+                    # 处理删除行为
+                    sync_del_action = sync_task.get("syncDelAction", "none")
+                    sync_delete = False
+                    if sync_del_action == "delete":
+                        sync_delete = True
+                    
+                    converted_tasks.append({
+                        "id": len(converted_tasks) + 1,  # 确保ID唯一
+                        "name": task_name,
+                        "source_dir": source_path,
+                        "destination_dir": dest_path,
+                        "enabled": True,
+                        "sync_delete": sync_delete,
+                        "sync_move": False,  # 新格式中没有这个选项
+                        "sync_update": True,
+                        "use_regex": False,  # 新格式中没有这个选项
+                        "regex_pattern": "",
+                        "schedule": self._convert_cron_format(sync_task.get("cron", "")),
+                        "file_filter": sync_task.get("excludeDirs", ""),
+                        "sync_mode": sync_task.get("syncMode", "data"),  # 新增同步模式选项
+                        "created_at": self.format_timestamp(int(time.time())),
+                        "updated_at": self.format_timestamp(int(time.time())),
+                        "last_run": "",
+                        "next_run": "",
+                        "status": "pending"
+                    })
         
-        return converted_data
+        return {
+            "users": users,
+            "connections": connections,
+            "tasks": converted_tasks,
+            "settings": settings
+        }
     
     def _convert_cron_format(self, cron_str):
         """转换cron表达式格式，确保兼容性

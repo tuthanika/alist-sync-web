@@ -658,6 +658,12 @@ class SyncManager:
             current_app.logger.error(error_details)
             raise
     
+    def reload_tasks(self):
+        """reload_tasks方法（兼容性别名），重新加载任务列表"""
+        # 这个方法是reload_scheduler的别名，提供向后兼容性
+        current_app.logger.info("调用reload_tasks()方法（别名），将重定向到reload_scheduler()")
+        return self.reload_scheduler()
+    
     def shutdown(self):
         """关闭调度器"""
         self.scheduler.shutdown() 

@@ -1104,7 +1104,12 @@ def api_import_data():
         if import_result.get("success") and import_result.get("details", {}).get("format") == "alist_sync_sync_config":
             sync_manager = current_app.config.get('SYNC_MANAGER')
             if sync_manager:
-                sync_manager.reload_tasks()
+                try:
+                    reload_result = sync_manager.reload_scheduler()
+                    import_result["details"]["scheduler"] = f"已重新加载调度器，{reload_result.get('loaded_tasks', 0)}个任务已添加"
+                except Exception as e:
+                    import_result["details"]["scheduler_error"] = str(e)
+                    current_app.logger.error(f"重新加载调度器失败: {str(e)}")
         
         return jsonify({"status": "success" if import_result.get("success") else "error", 
                         "message": import_result.get("message"), 

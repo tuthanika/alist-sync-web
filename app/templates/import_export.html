@@ -41,6 +41,15 @@
                 <div class="alert alert-warning">
                     <i class="bi bi-exclamation-triangle-fill me-2"></i>导入数据将替换当前系统的所有配置，所有连接和任务数据将被完全覆盖而不是追加。系统会自动备份当前数据。
                 </div>
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle-fill me-2"></i>支持多种导入格式：
+                    <ul class="mb-0 mt-2">
+                        <li>标准格式 - 通过本系统导出的完整数据</li>
+                        <li>旧版基本配置 - 旧版AList-Sync的基本配置文件，包含服务器地址和Token</li>
+                        <li>旧版同步配置 - 旧版AList-Sync的同步任务配置文件</li>
+                        <li>新版同步配置 - 新版AList-Sync的同步任务配置文件，包含源存储和目标存储</li>
+                    </ul>
+                </div>
                 <div class="mb-3">
                     <label for="import-file" class="form-label">选择导出的JSON文件</label>
                     <input type="file" class="form-control" id="import-file" accept=".json">
@@ -186,6 +195,16 @@
                                         formatDesc = 'AList-Sync基本配置格式';
                                     } else if (response.details.format === 'alist_sync_sync_config') {
                                         formatDesc = 'AList-Sync同步任务配置格式';
+                                        
+                                        // 显示任务统计信息
+                                        if (response.details.task_count !== undefined) {
+                                            formatDesc += ` (共${response.details.task_count}个任务)`;
+                                        }
+                                        
+                                        // 显示是否为新旧版格式
+                                        if (response.details.format_version) {
+                                            formatDesc += ` - ${response.details.format_version}`;
+                                        }
                                     }
                                     resultHTML += '导入格式: ' + formatDesc;
                                     resultHTML += '</li>';
