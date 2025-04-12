@@ -2,6 +2,9 @@ import os
 import json
 import time
 import datetime
+from datetime import datetime as dt, timedelta
+import glob
+import logging
 from pathlib import Path
 from flask import current_app
 
@@ -99,7 +102,7 @@ class DataManager:
         """将时间戳格式化为 yyyy-MM-dd HH:mm:ss 格式"""
         if not timestamp:
             return ""
-        return datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+        return dt.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
     
     # 用户管理
     def get_users(self):
@@ -458,7 +461,38 @@ class DataManager:
                     pass
         
         self._write_json(self.task_instances_file, new_instances)
+    
+    def clear_main_log_files(self, days=None):
+        """清理主日志文件alist_sync.log的历史备份
+        每天轮换的日志文件格式为 alist_sync.log.YYYY-MM-DD
+        """
+        if days is None:
+            settings = self.get_settings()
+            days = settings.get("keep_log_days", 7)
         
+        # 计算截止日期
+        cutoff_date = dt.now() - timedelta(days=days)
+        
+        # 获取所有日志文件
+        log_files = glob.glob(os.path.join(self.log_dir, "alist_sync.log.*"))
+        
+        # 遍历所有日志文件
+        for log_file in log_files:
+            try:
+                # 提取日期部分
+                file_name = os.path.basename(log_file)
+                date_part = file_name.split('.')[-1]  # 获取日期部分 YYYY-MM-DD
+                
+                # 解析日期
+                file_date = dt.strptime(date_part, "%Y-%m-%d")
+                
+                # 如果日期早于保留期限，则删除
+                if file_date < cutoff_date:
+                    os.remove(log_file)
+                    logging.info(f"已删除过期日志文件: {file_name}")
+            except Exception as e:
+                logging.error(f"处理日志文件 {log_file} 时出错: {str(e)}")
+    
     # 任务日志管理
     def _get_task_log_file_path(self, task_id, instance_id):
         """获取任务日志文件路径"""
@@ -674,92 +708,38 @@ class DataManager:
         Returns:
             dict: 标准格式的配置数据
         """
-        # 读取现有数据作为基础
-        users = self._read_json(self.users_file)
-        settings = self._read_json(self.settings_file)
+        converted_data = {
+            "tasks": []
+        }
         
-        # 创建新的连接集合，完全覆盖现有连接
-        connections = []
-        
-        # 生成连接ID映射表（存储路径到连接ID的映射）
-        conn_path_to_id = {}
-        next_conn_id = 1
+        # 处理每个同步任务
+        for i, sync_task in enumerate(config.get("tasks", [])):
+            # 提取source_dir和dst_dir
+            dirs = sync_task.get("syncDirs", "").strip()
+            if not dirs:
+                continue
+                
+            parts = dirs.split("->")
+            if len(parts) != 2:
+                continue
+                
+            source_dir = parts[0].strip()
+            dst_dir = parts[1].strip()
             
-        # 收集所有任务中使用的源存储和目标存储路径
-        all_storage_paths = set()
-        for sync_task in config.get("tasks", []):
-            source_storage = sync_task.get("sourceStorage", "")
-            if source_storage:
-                all_storage_paths.add(source_storage)
+            # 任务名称(如果没有则生成默认名称)
+            task_name = sync_task.get("name") or f"同步任务 {i+1}"
             
-            target_storages = sync_task.get("targetStorages", [])
-            for target in target_storages:
-                if target:
-                    all_storage_paths.add(target)
-        
-        # 为每个存储路径创建一个新连接
-        for storage_path in all_storage_paths:
-            conn = {
-                "connection_id": next_conn_id,
-                "name": storage_path,
-                "server": "",  # 这些字段需要用户稍后配置
-                "username": "",
-                "password": "",
-                "token": "",
-                "proxy": "",
-                "max_retry": "3",
-                "insecure": False,
-                "status": "pending",  # 标记为待配置状态
-                "created_at": self.format_timestamp(int(time.time())),
-                "updated_at": self.format_timestamp(int(time.time()))
-            }
-            connections.append(conn)
-            conn_path_to_id[storage_path] = next_conn_id
-            next_conn_id += 1
-            
-        # 如果没有创建任何连接（没有存储路径），至少创建一个默认连接
-        if not connections:
-            connections.append({
-                "connection_id": 1,
-                "name": "default",
-                "server": "",
-                "username": "",
-                "password": "",
-                "token": "",
-                "proxy": "",
-                "max_retry": "3",
-                "insecure": False,
-                "status": "pending",
-                "created_at": self.format_timestamp(int(time.time())),
-                "updated_at": self.format_timestamp(int(time.time()))
-            })
-        
-        # 创建新任务列表，每个任务都会获得一个新ID
-        next_task_id = 1
-        new_tasks = []
-        
-        for sync_task in config.get("tasks", []):
-            # 获取源连接ID
-            source_path = sync_task.get("sourceStorage", "")
-            source_conn_id = conn_path_to_id.get(source_path, 1)  # 默认使用ID 1
-            
-            # 获取目标连接IDs
-            target_paths = sync_task.get("targetStorages", [])
-            target_conn_ids = [conn_path_to_id.get(path, 1) for path in target_paths if path]
-            
-            # 创建新的任务配置
-            new_task = {
-                "id": next_task_id,
-                "name": sync_task.get("taskName", f"导入任务{next_task_id}"),
-                "connection_id": 1,  # 默认使用第一个连接
-                "enabled": True,
-                "sync_type": "file_sync",
-                "source_connection_id": source_conn_id,
-                "source_connection_name": source_path,
-                "source_path": sync_task.get("syncDirs", "").split(",")[0] if sync_task.get("syncDirs") else "",
-                "target_connection_ids": target_conn_ids,
-                "target_connection_names": ", ".join(target_paths),
-                "target_path": "",  # alist_sync不同，目标位置在我们系统是自定义的
+            converted_data["tasks"].append({
+                "id": i + 1,
+                "name": task_name,
+                "source_dir": source_dir,
+                "destination_dir": dst_dir,
+                "enabled": sync_task.get("enabled", True),
+                "sync_delete": sync_task.get("syncDel", False),
+                "sync_move": sync_task.get("syncMove", False),
+                "sync_update": True,
+                "use_regex": bool(sync_task.get("regex")),
+                "regex_pattern": sync_task.get("regex", ""),
                 "schedule": self._convert_cron_format(sync_task.get("cron", "")),
                 "file_filter": sync_task.get("excludeDirs", ""),
                 "created_at": self.format_timestamp(int(time.time())),
@@ -767,17 +747,9 @@ class DataManager:
                 "last_run": "",
                 "next_run": "",
                 "status": "pending"
-            }
-            
-            new_tasks.append(new_task)
-            next_task_id += 1
+            })
         
-        return {
-            "users": users,
-            "connections": connections,
-            "tasks": new_tasks,
-            "settings": settings
-        }
+        return converted_data
     
     def _convert_cron_format(self, cron_str):
         """转换cron表达式格式，确保兼容性

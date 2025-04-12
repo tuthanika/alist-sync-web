@@ -63,6 +63,10 @@ def init_app(app):
                         data_manager.clear_old_task_instances(keep_log_days)
                         app.logger.info(f"任务实例和任务日志清理完成，保留{keep_log_days}天内的记录")
                         
+                        # 清理主日志文件 alist_sync.log
+                        data_manager.clear_main_log_files(keep_log_days)
+                        app.logger.info(f"主日志文件清理完成，保留{keep_log_days}天内的日志")
+                        
                     except Exception as e:
                         app.logger.error(f"清理日志时出错: {str(e)}")
                         app.logger.error(traceback.format_exc())
