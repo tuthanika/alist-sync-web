@@ -157,6 +157,16 @@
                     </div>
                     
                     <div class="mb-3">
+                        <label for="syncDiffAction" class="form-label">差异项处理策略</label>
+                        <select class="form-select bg-dark text-light" id="syncDiffAction">
+                            <option value="none">不处理目标目录差异项</option>
+                            <option value="move">移至目标目录回收站</option>
+                            <option value="delete">删除目标目录多余项</option>
+                        </select>
+                        <div class="form-text text-muted">注意：选择"文件移动"模式时，差异项处理策略将被禁用</div>
+                    </div>
+                    
+                    <div class="mb-3">
                         <label for="schedule" class="form-label">计划 (Cron 表达式，留空表示手动)</label>
                         <input type="text" class="form-control bg-dark text-light" id="schedule" placeholder="*/30 * * * *">
                         <div class="form-text text-muted">示例：*/30 * * * * (每30分钟)</div>
@@ -239,6 +249,16 @@
                             <option value="file_sync">文件同步</option>
                             <option value="file_move">文件移动</option>
                         </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="editSyncDiffAction" class="form-label">差异项处理策略</label>
+                        <select class="form-select bg-dark text-light" id="editSyncDiffAction">
+                            <option value="none">不处理目标目录差异项</option>
+                            <option value="move">移至目标目录回收站</option>
+                            <option value="delete">删除目标目录多余项</option>
+                        </select>
+                        <div class="form-text text-muted">注意：选择"文件移动"模式时，差异项处理策略将被禁用</div>
                     </div>
                     
                     <div class="mb-3">
@@ -395,11 +415,24 @@
             });
         });
         
-        // 刷新日志按钮
+        // 任务日志刷新按钮
         document.getElementById('refreshLogBtn').addEventListener('click', function() {
             const instanceId = this.getAttribute('data-instance-id');
             if (instanceId) {
                 loadTaskLog(instanceId);
+            }
+        });
+        
+        // 编辑表单中的同步模式变更逻辑
+        document.getElementById('editSyncType').addEventListener('change', function() {
+            const editSyncDiffAction = document.getElementById('editSyncDiffAction');
+            if (this.value === 'file_move') {
+                editSyncDiffAction.value = 'none';
+                editSyncDiffAction.disabled = true;
+                editSyncDiffAction.parentElement.querySelector('.form-text').textContent = '注意："文件移动"模式下，差异项处理策略已被禁用';
+            } else {
+                editSyncDiffAction.disabled = false;
+                editSyncDiffAction.parentElement.querySelector('.form-text').textContent = '注意：选择"文件移动"模式时，差异项处理策略将被禁用';
             }
         });
         
@@ -447,6 +480,7 @@
                 source_path: document.getElementById('sourcePath').value,
                 target_path: document.getElementById('targetPath').value,
                 sync_type: document.getElementById('syncType').value,
+                sync_diff_action: document.getElementById('syncDiffAction').value,
                 schedule: document.getElementById('schedule').value,
                 file_filter: document.getElementById('fileFilter').value,
                 enabled: document.getElementById('taskEnabled').checked
@@ -550,6 +584,7 @@
                     document.getElementById('editSourcePath').value = task.source_path || '/';
                     document.getElementById('editTargetPath').value = task.target_path || '/';
                     document.getElementById('editSyncType').value = task.sync_type || 'file_sync';
+                    document.getElementById('editSyncDiffAction').value = task.sync_diff_action || 'none';
                     document.getElementById('editSchedule').value = task.schedule || '';
                     document.getElementById('editFileFilter').value = task.file_filter || '';
                     document.getElementById('editTaskEnabled').checked = task.enabled !== false;
@@ -620,6 +655,7 @@
                 source_path: document.getElementById('editSourcePath').value,
                 target_path: document.getElementById('editTargetPath').value,
                 sync_type: document.getElementById('editSyncType').value,
+                sync_diff_action: document.getElementById('editSyncDiffAction').value,
                 schedule: document.getElementById('editSchedule').value,
                 file_filter: document.getElementById('editFileFilter').value,
                 enabled: document.getElementById('editTaskEnabled').checked
@@ -1259,6 +1295,7 @@
                         document.getElementById('editSourcePath').value = task.source_path || '/';
                         document.getElementById('editTargetPath').value = task.target_path || '/';
                         document.getElementById('editSyncType').value = task.sync_type || 'file_sync';
+                        document.getElementById('editSyncDiffAction').value = task.sync_diff_action || 'none';
                         document.getElementById('editSchedule').value = task.schedule || '';
                         document.getElementById('editFileFilter').value = task.file_filter || '';
                         document.getElementById('editTaskEnabled').checked = task.enabled !== false;

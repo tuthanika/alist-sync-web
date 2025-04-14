@@ -86,7 +86,24 @@ class AlistSync:
                  sync_delete_action: str = "none", exclude_list: List[str] = None, move_file_action: bool = False,
                  regex_patterns_list=None, regex_pattern=None,
                  task_list: List[str] = None):
-        """初始化AlistSync类"""
+        """
+        初始化AlistSync类
+        
+        参数:
+            base_url: AList服务器地址
+            username: 用户名
+            password: 密码
+            token: 认证令牌
+            sync_delete_action: 同步目标目录多余项的处理方式
+                - "none": 不处理目标目录差异项
+                - "move": 移至目标目录回收站
+                - "delete": 删除目标目录多余项
+            exclude_list: 排除目录列表
+            move_file_action: 是否移动源文件
+            regex_patterns_list: 正则表达式模式列表
+            regex_pattern: 正则表达式模式
+            task_list: 任务列表
+        """
         if regex_patterns_list is None:
             regex_patterns_list = []
         self.base_url = base_url
@@ -388,8 +405,25 @@ class AlistSync:
         return False
 
     def _handle_sync_delete(self, src_dir: str, dst_dir: str, src_contents: List[Dict]):
-        """处理同步删除逻辑"""
+        """
+        处理同步删除逻辑
+        
+        参数:
+            src_dir: 源目录
+            dst_dir: 目标目录
+            src_contents: 源目录内容列表
+            
+        处理方式:
+            - "none": 不处理目标目录差异项
+            - "move": 移至目标目录回收站
+            - "delete": 删除目标目录多余项
+        """
         try:
+            # 如果不处理差异项，直接返回
+            if self.sync_delete_action == "none":
+                logger.info("差异项处理策略：不处理目标目录差异项")
+                return
+                
             dst_contents = self.get_directory_contents(dst_dir)
             src_names = {}
             if src_contents:
@@ -405,12 +439,17 @@ class AlistSync:
                 to_delete = dst_names
 
             if not to_delete:
-                logger.info("没有需要删除的项目")
+                logger.info("没有需要处理的差异项")
                 return
 
+            # 记录处理策略
+            if self.sync_delete_action == "move":
+                logger.info("差异项处理策略：移至目标目录回收站")
+            elif self.sync_delete_action == "delete":
+                logger.info("差异项处理策略：删除目标目录多余项")
+                
             for name in to_delete:
                 if self.sync_delete_action == "move":
-                    logger.info(f"处理同步移动 - 目录: {dst_dir}")
                     logger.info(f"处理移动项目: {name}")
                     trash_dir = self._get_trash_dir(dst_dir)
                     if trash_dir:
@@ -419,8 +458,7 @@ class AlistSync:
                             self.create_directory(trash_dir)
                         logger.info(f"移动到回收站: {name}")
                         self._move_item(dst_dir, trash_dir, name)
-                else:  # delete
-                    logger.info(f"处理同步删除 - 目录: {dst_dir}")
+                elif self.sync_delete_action == "delete":
                     logger.info(f"处理删除项目: {name}")
                     logger.info(f"直接删除项目: {name}")
                     self._directory_operation("remove", dir=dst_dir, names=[name])
@@ -568,7 +606,19 @@ def get_dir_pairs_from_env() -> List[str]:
 
 def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str = None, move_file: bool = False,
          regex_patterns: str = None, ):
-    """主函数，用于命令行执行"""
+    """
+    主函数，用于命令行执行
+    
+    参数:
+        dir_pairs: 目录对，格式为"源目录:目标目录"，多个目录对用分号分隔
+        sync_del_action: 同步目标目录多余项的处理方式
+            - "none": 不处理目标目录差异项（默认）
+            - "move": 移至目标目录回收站
+            - "delete": 删除目标目录多余项
+        exclude_dirs: 排除的目录，多个目录用逗号分隔
+        move_file: 是否移动源文件，默认为False
+        regex_patterns: 正则表达式模式
+    """
     code_souce()
     xiaojin()
 
@@ -584,6 +634,14 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
         sync_delete_action = sync_del_action
     else:
         sync_delete_action = os.environ.get("SYNC_DELETE_ACTION", "none")
+    
+    # 验证sync_delete_action值是否有效
+    sync_delete_action = sync_delete_action.lower()
+    if sync_delete_action not in ["none", "move", "delete"]:
+        logger.warning(f"无效的差异项处理方式: {sync_delete_action}，将使用默认值: none")
+        sync_delete_action = "none"
+    else:
+        logger.info(f"差异项处理方式: {sync_delete_action}")
 
     # 是否删除源目录
     if move_file:
@@ -592,7 +650,8 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
         move_file_action = os.environ.get("MOVE_FILE", "false").lower() == "true"
 
     # 删除源目录和删除多余目标目录无法同时生效
-    if move_file_action:
+    if move_file_action and sync_delete_action != "none":
+        logger.warning("移动源文件和处理目标目录差异项不能同时启用，将禁用目标目录差异项处理")
         sync_delete_action = "none"
 
     # 排除目录
@@ -637,7 +696,7 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
         return
 
     logger.info(
-        f"配置信息 - URL: {base_url}, 用户名: {username}, 删除动作: {sync_delete_action}, 删除源目录: {move_file_action}")
+        f"配置信息 - URL: {base_url}, 用户名: {username}, 差异项处理策略: {sync_delete_action}, 删除源目录: {move_file_action}")
 
     # 创建AlistSync实例时添加token参数
     alist_sync = AlistSync(base_url, username, password, token, sync_delete_action, exclude_list, move_file_action,
