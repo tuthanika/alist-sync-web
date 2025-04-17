@@ -4,6 +4,60 @@
 
 {% block page_title %}同步任务管理{% endblock %}
 
+{% block styles %}
+<style>
+    .task-row {
+        cursor: pointer;
+        transition: background-color 0.2s;
+        position: relative;
+    }
+    
+    .task-row:hover {
+        background-color: rgba(255, 255, 255, 0.1) !important;
+    }
+    
+    .task-row:hover:after {
+        content: "点击查看详情";
+        position: absolute;
+        right: 150px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: rgba(0, 0, 0, 0.5);
+        color: #fff;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        opacity: 0.8;
+    }
+    
+    .active-task-row {
+        background-color: rgba(13, 110, 253, 0.2) !important;
+    }
+    
+    .task-detail-row {
+        background-color: rgba(0, 0, 0, 0.2);
+    }
+    
+    .task-detail-row .card {
+        border-left: 4px solid #0d6efd;
+    }
+    
+    /* 添加展开指示器 */
+    .task-row td:first-child::before {
+        content: "▶";
+        color: #6c757d;
+        margin-right: 6px;
+        display: inline-block;
+        transition: transform 0.2s;
+    }
+    
+    .active-task-row td:first-child::before {
+        content: "▼";
+        color: #0d6efd;
+    }
+</style>
+{% endblock %}
+
 {% block header_buttons %}
 <!-- 移除重复的添加任务按钮 -->
 {% endblock %}
@@ -40,7 +94,7 @@
                         <tbody id="tasks-table">
                             {% if tasks %}
                                 {% for task in tasks %}
-                                <tr>
+                                <tr class="task-row" data-task-id="{{ task.id }}">
                                     <td>{{ task.id }}</td>
                                     <td>{{ task.name }}</td>
                                     <td>{{ task.source_connection_name }}</td>
@@ -83,10 +137,61 @@
                                         </div>
                                     </td>
                                 </tr>
+                                <tr class="task-detail-row" id="task-detail-{{ task.id }}" style="display: none;">
+                                    <td colspan="10">
+                                        <div class="card bg-dark mb-0">
+                                            <div class="card-body">
+                                                <h5 class="card-title">任务详情</h5>
+                                                <div class="row">
+                                                    <div class="col-md-6">
+                                                        <div class="mb-2">
+                                                            <strong>源路径:</strong> {{ task.source_path }}
+                                                        </div>
+                                                        <div class="mb-2">
+                                                            <strong>目标路径:</strong> {{ task.target_path }}
+                                                        </div>
+                                                        <div class="mb-2">
+                                                            <strong>同步模式:</strong> 
+                                                            {% if task.sync_type == 'file_sync' %}文件同步
+                                                            {% elif task.sync_type == 'file_move' %}文件移动
+                                                            {% endif %}
+                                                        </div>
+                                                        <div class="mb-2">
+                                                            <strong>差异项处理:</strong> 
+                                                            {% if task.sync_diff_action == 'none' %}不处理
+                                                            {% elif task.sync_diff_action == 'move' %}移至回收站
+                                                            {% elif task.sync_diff_action == 'delete' %}删除
+                                                            {% endif %}
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <div class="mb-2">
+                                                            <strong>计划:</strong> {{ task.schedule or "手动执行" }}
+                                                        </div>
+                                                        <div class="mb-2">
+                                                            <strong>文件过滤:</strong> {{ task.file_filter or "无" }}
+                                                        </div>
+                                                        <div class="mb-2">
+                                                            <strong>启用状态:</strong> {{ "启用" if task.enabled else "禁用" }}
+                                                        </div>
+                                                        <div class="mb-2">
+                                                            <strong>目标存储数量:</strong> 
+                                                            {% if task.target_connection_ids and task.target_connection_ids|length > 0 %}
+                                                                {{ task.target_connection_ids|length }}
+                                                            {% else %}
+                                                                1
+                                                            {% endif %}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
                                 {% endfor %}
                             {% else %}
                                 <tr>
-                                    <td colspan="9" class="text-center">暂无任务</td>
+                                    <td colspan="10" class="text-center">暂无任务</td>
                                 </tr>
                             {% endif %}
                         </tbody>
@@ -368,11 +473,87 @@
 {% block extra_js %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        console.log('页面加载完成，开始初始化...');
+        
         // 全局变量，用于存储连接数据
         let globalConnections = [];
         
         // 加载所有连接
         loadConnections();
+        
+        // 加载任务列表
+        console.log('开始加载任务列表...');
+        loadTasks();
+        
+        // 为已存在的任务行添加事件
+        console.log('为当前任务行添加事件...');
+        attachTaskRowEvents();
+        
+        // 延迟检查任务行事件绑定
+        setTimeout(function() {
+            console.log('延迟检查任务行事件绑定...');
+            const taskRows = document.querySelectorAll('.task-row');
+            if (taskRows.length > 0) {
+                console.log(`检测到 ${taskRows.length} 个任务行，重新绑定事件`);
+                
+                // 添加直接的点击处理
+                taskRows.forEach(row => {
+                    // 移除旧事件，防止重复
+                    row.removeEventListener('click', taskRowClickHandler);
+                    // 添加新事件
+                    row.addEventListener('click', taskRowClickHandler);
+                    console.log('已为任务行重新绑定点击事件:', row.getAttribute('data-task-id'));
+                });
+            } else {
+                console.log('未检测到任务行，可能加载有延迟');
+            }
+        }, 1000); // 等待1秒
+        
+        // 定义任务行点击处理函数
+        function taskRowClickHandler(event) {
+            console.log('任务行点击处理函数被调用');
+            
+            // 如果点击的是按钮，不处理展开/收起
+            if (event.target.tagName === 'BUTTON' || 
+                event.target.closest('button') || 
+                event.target.tagName === 'I' ||
+                event.target.closest('.btn-group')) {
+                console.log('点击了按钮区域，忽略展开/收起');
+                return;
+            }
+            
+            // 获取任务ID
+            const taskId = this.getAttribute('data-task-id');
+            console.log('点击任务行:', taskId);
+            const detailRow = document.getElementById(`task-detail-${taskId}`);
+            
+            if (!detailRow) {
+                console.error(`找不到详情行 task-detail-${taskId}`);
+                return;
+            }
+            
+            // 切换详情行的显示状态
+            if (detailRow.style.display === 'none' || !detailRow.style.display) {
+                // 关闭其他打开的详情行
+                document.querySelectorAll('.task-detail-row').forEach(row => {
+                    if (row.id !== `task-detail-${taskId}`) {
+                        row.style.display = 'none';
+                        // 移除其他行的活动类
+                        const otherId = row.id.replace('task-detail-', '');
+                        const otherRow = document.querySelector(`.task-row[data-task-id="${otherId}"]`);
+                        if (otherRow) otherRow.classList.remove('active-task-row');
+                    }
+                });
+                
+                // 显示当前详情行
+                detailRow.style.display = 'table-row';
+                this.classList.add('active-task-row');
+            } else {
+                // 隐藏当前详情行
+                detailRow.style.display = 'none';
+                this.classList.remove('active-task-row');
+            }
+        }
         
         // 初始化检查同步模式，如有必要则禁用差异项处理策略
         function initSyncTypeHandling() {
@@ -482,7 +663,7 @@
             // 验证必填字段
             const taskName = document.getElementById('taskName');
             if (!taskName.value.trim()) {
-                alert('请输入任务名称');
+                showAlert('请输入任务名称', 'warning');
                 taskName.focus();
                 return;
             }
@@ -495,13 +676,13 @@
             });
             
             if (!sourceConn.value) {
-                alert('请选择源连接');
+                showAlert('请选择源连接', 'warning');
                 sourceConn.focus();
                 return;
             }
             
             if (targetConns.length === 0) {
-                alert('请至少选择一个目标连接');
+                showAlert('请至少选择一个目标连接', 'warning');
                 document.getElementById('targetConnections').focus();
                 return;
             }
@@ -583,7 +764,7 @@
             })
             .catch(error => {
                 console.error('保存任务失败:', error);
-                alert('保存任务失败: ' + error.message);
+                showAlert('保存任务失败: ' + error.message, 'danger');
             })
             .finally(() => {
                 // 恢复按钮状态
@@ -638,7 +819,7 @@
                 })
                 .catch(error => {
                     console.error('获取任务信息失败:', error);
-                    alert('获取任务信息失败: ' + error.message);
+                    showAlert('获取任务信息失败: ' + error.message, 'danger');
                 })
                 .finally(() => {
                     // 恢复按钮状态
@@ -798,7 +979,8 @@
             })
             .then(data => {
                 if (data.status === 'success') {
-                    alert(`任务 ${taskId} 已删除`);
+                    // 替换alert为showAlert
+                    showAlert(`任务 ${taskId} 已删除`, 'success');
                     // 关闭模态框
                     bootstrap.Modal.getInstance(document.getElementById('confirmDeleteModal')).hide();
                     // 刷新任务列表而不是整个页面
@@ -862,7 +1044,7 @@
                                 new bootstrap.Modal(document.getElementById('taskLogModal')).show();
                             }
                         } else {
-                            alert(`任务 ${taskId} 已开始运行`);
+                            showAlert(`任务 ${taskId} 已开始运行`, 'success');
                         }
                         // 刷新任务列表而不是整个页面
                         loadTasks();
@@ -893,7 +1075,7 @@
                 })
                 .catch(error => {
                     console.error('运行任务失败:', error);
-                    alert('运行任务失败: ' + error.message);
+                    showAlert('运行任务失败: ' + error.message, 'danger');
                 })
                 .finally(() => {
                     // 恢复按钮状态
@@ -925,7 +1107,7 @@
             })
             .catch(error => {
                 console.error('加载连接失败:', error);
-                alert('加载连接列表失败');
+                showAlert('加载连接列表失败', 'danger');
             });
         }
         
@@ -970,7 +1152,7 @@
             })
             .catch(error => {
                 console.error('加载连接失败:', error);
-                alert('加载连接列表失败');
+                showAlert('加载连接列表失败', 'danger');
             });
         }
         
@@ -1006,12 +1188,12 @@
                         targetConnections.appendChild(targetOption);
                     });
                 } else {
-                    alert('获取存储列表失败或存储列表为空');
+                    showAlert('获取存储列表失败或存储列表为空', 'warning');
                 }
             })
             .catch(error => {
                 console.error('加载存储列表失败:', error);
-                alert('加载存储列表失败: ' + error.message);
+                showAlert('加载存储列表失败: ' + error.message, 'danger');
                 
                 // 重置选择器
                 document.getElementById('sourceConnection').innerHTML = '<option value="">选择源连接</option>';
@@ -1072,12 +1254,12 @@
                     }
                 } else {
                     console.error('获取存储列表失败或为空:', data);
-                    alert('获取存储列表失败或存储列表为空');
+                    showAlert('获取存储列表失败或存储列表为空', 'warning');
                 }
             })
             .catch(error => {
                 console.error('加载存储列表失败:', error);
-                alert('加载存储列表失败: ' + error.message);
+                showAlert('加载存储列表失败: ' + error.message, 'danger');
                 
                 // 重置选择器
                 document.getElementById('editSourceConnection').innerHTML = '<option value="">选择源连接</option>';
@@ -1250,26 +1432,34 @@
                 const tasksTable = document.getElementById('tasks-table');
                 
                 if (tasks && tasks.length > 0) {
-                    // 清空表格并填充新数据
+                    // 清空表格并重新填充
                     tasksTable.innerHTML = '';
                     
+                    // 使用模板填充任务列表
                     tasks.forEach(task => {
-                        const row = document.createElement('tr');
-                        row.innerHTML = `
+                        // 主行
+                        const taskRow = document.createElement('tr');
+                        taskRow.className = 'task-row';
+                        taskRow.setAttribute('data-task-id', task.id);
+                        
+                        // 设置行内容
+                        taskRow.innerHTML = `
                             <td>${task.id}</td>
                             <td>${task.name}</td>
-                            <td>${task.source_connection_name}</td>
-                            <td>${task.target_connection_names}</td>
+                            <td>${task.source_connection_name || ''}</td>
+                            <td>${task.target_connection_names || ''}</td>
                             <td>
-                                ${task.sync_type === 'file_sync' 
-                                    ? '<span class="badge bg-info">文件同步</span>' 
-                                    : '<span class="badge bg-primary">文件移动</span>'}
+                                ${task.sync_type === 'file_sync' ? '<span class="badge bg-info">文件同步</span>' : ''}
+                                ${task.sync_type === 'file_move' ? '<span class="badge bg-primary">文件移动</span>' : ''}
                             </td>
-                            <td>${task.created_at}</td>
-                            <td>${task.last_run || "从未"}</td>
-                            <td>${task.next_run || "未计划"}</td>
+                            <td>${task.created_at || ''}</td>
+                            <td>${task.last_run || '从未'}</td>
+                            <td>${task.next_run || '未计划'}</td>
                             <td>
-                                ${getStatusBadge(task.status)}
+                                ${task.status === 'running' ? '<span class="badge bg-primary">运行中</span>' : ''}
+                                ${task.status === 'completed' ? '<span class="badge bg-success">已完成</span>' : ''}
+                                ${task.status === 'failed' ? '<span class="badge bg-danger">失败</span>' : ''}
+                                ${task.status === 'pending' ? '<span class="badge bg-secondary">等待中</span>' : ''}
                             </td>
                             <td>
                                 <div class="btn-group">
@@ -1288,11 +1478,80 @@
                                 </div>
                             </td>
                         `;
-                        tasksTable.appendChild(row);
+                        
+                        // 详情行
+                        const detailRow = document.createElement('tr');
+                        detailRow.className = 'task-detail-row';
+                        detailRow.id = `task-detail-${task.id}`;
+                        detailRow.style.display = 'none';
+                        
+                        // 差异项处理策略文本
+                        let diffActionText = '不处理';
+                        if (task.sync_diff_action === 'move') diffActionText = '移至回收站';
+                        if (task.sync_diff_action === 'delete') diffActionText = '删除';
+                        
+                        // 设置详情行内容
+                        detailRow.innerHTML = `
+                            <td colspan="10">
+                                <div class="card bg-dark mb-0">
+                                    <div class="card-body">
+                                        <h5 class="card-title">任务详情</h5>
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="mb-2">
+                                                    <strong>源路径:</strong> ${task.source_path || '/'}
+                                                </div>
+                                                <div class="mb-2">
+                                                    <strong>目标路径:</strong> ${task.target_path || '/'}
+                                                </div>
+                                                <div class="mb-2">
+                                                    <strong>同步模式:</strong> 
+                                                    ${task.sync_type === 'file_sync' ? '文件同步' : ''}
+                                                    ${task.sync_type === 'file_move' ? '文件移动' : ''}
+                                                </div>
+                                                <div class="mb-2">
+                                                    <strong>差异项处理:</strong> ${diffActionText}
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="mb-2">
+                                                    <strong>计划:</strong> ${task.schedule || '手动执行'}
+                                                </div>
+                                                <div class="mb-2">
+                                                    <strong>文件过滤:</strong> ${task.file_filter || '无'}
+                                                </div>
+                                                <div class="mb-2">
+                                                    <strong>启用状态:</strong> ${task.enabled !== false ? '启用' : '禁用'}
+                                                </div>
+                                                <div class="mb-2">
+                                                    <strong>目标存储数量:</strong> 
+                                                    ${Array.isArray(task.target_connection_ids) ? task.target_connection_ids.length : 1}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        `;
+                        
+                        // 添加到表格
+                        tasksTable.appendChild(taskRow);
+                        tasksTable.appendChild(detailRow);
                     });
                     
-                    // 重新绑定按钮事件
+                    // 为任务行和按钮添加事件
                     attachTaskButtonEvents();
+                    console.log('在loadTasks中绑定任务行点击事件');
+                    
+                    // 再次确保任务行绑定了点击事件
+                    const taskRows = document.querySelectorAll('.task-row');
+                    taskRows.forEach(row => {
+                        // 移除旧事件，防止重复
+                        row.removeEventListener('click', taskRowClickHandler);
+                        // 添加新事件
+                        row.addEventListener('click', taskRowClickHandler);
+                        console.log('在loadTasks中为任务行绑定点击事件:', row.getAttribute('data-task-id'));
+                    });
                 } else {
                     tasksTable.innerHTML = '<tr><td colspan="10" class="text-center">暂无任务</td></tr>';
                 }
@@ -1349,7 +1608,7 @@
                     })
                     .catch(error => {
                         console.error('获取任务信息失败:', error);
-                        alert('获取任务信息失败: ' + error.message);
+                        showAlert('获取任务信息失败: ' + error.message, 'danger');
                     })
                     .finally(() => {
                         // 恢复按钮状态
@@ -1412,7 +1671,7 @@
                                     new bootstrap.Modal(document.getElementById('taskLogModal')).show();
                                 }
                             } else {
-                                alert(`任务 ${taskId} 已开始运行`);
+                                showAlert(`任务 ${taskId} 已开始运行`, 'success');
                             }
                             // 刷新任务列表而不是整个页面
                             loadTasks();
@@ -1443,7 +1702,7 @@
                     })
                     .catch(error => {
                         console.error('运行任务失败:', error);
-                        alert('运行任务失败: ' + error.message);
+                        showAlert('运行任务失败: ' + error.message, 'danger');
                     })
                     .finally(() => {
                         // 恢复按钮状态
@@ -1468,6 +1727,82 @@
                     // 显示模态框
                     new bootstrap.Modal(document.getElementById('taskInstancesModal')).show();
                 });
+            });
+            
+            // 为任务行绑定点击事件
+            console.log('在attachTaskButtonEvents中为任务行绑定点击事件');
+            const taskRows = document.querySelectorAll('.task-row');
+            taskRows.forEach(row => {
+                // 移除旧事件，防止重复
+                row.removeEventListener('click', taskRowClickHandler);
+                // 添加新事件
+                row.addEventListener('click', taskRowClickHandler);
+                console.log('已为任务行绑定点击事件:', row.getAttribute('data-task-id'));
+            });
+        }
+        
+        // 为任务行添加点击展开/收起功能
+        function attachTaskRowEvents() {
+            console.log('开始绑定任务行点击事件...');
+            // 获取所有任务行
+            const taskRows = document.querySelectorAll('.task-row');
+            console.log(`找到 ${taskRows.length} 个任务行`);
+            
+            // 为所有任务行添加点击事件
+            taskRows.forEach(row => {
+                row.addEventListener('click', function(event) {
+                    console.log('任务行被点击:', this.getAttribute('data-task-id'));
+                    // 如果点击的是按钮，不处理展开/收起
+                    if (event.target.tagName === 'BUTTON' || 
+                        event.target.closest('button') || 
+                        event.target.tagName === 'I' ||
+                        event.target.closest('.btn-group')) {
+                        console.log('点击了按钮区域，忽略展开/收起');
+                        return;
+                    }
+                    
+                    // 获取任务ID
+                    const taskId = this.getAttribute('data-task-id');
+                    console.log('准备切换详情显示，任务ID:', taskId);
+                    const detailRow = document.getElementById(`task-detail-${taskId}`);
+                    if (!detailRow) {
+                        console.error(`找不到详情行 task-detail-${taskId}`);
+                        return;
+                    }
+                    
+                    // 切换详情行的显示状态
+                    if (detailRow.style.display === 'none' || !detailRow.style.display) {
+                        console.log('显示详情行');
+                        // 关闭其他打开的详情行
+                        document.querySelectorAll('.task-detail-row').forEach(row => {
+                            if (row.id !== `task-detail-${taskId}`) {
+                                row.style.display = 'none';
+                                // 移除其他行的激活状态
+                                const otherId = row.id.replace('task-detail-', '');
+                                const otherRow = document.querySelector(`.task-row[data-task-id="${otherId}"]`);
+                                if (otherRow) otherRow.classList.remove('active-task-row');
+                            }
+                        });
+                        
+                        // 显示当前详情行
+                        detailRow.style.display = 'table-row';
+                        this.classList.add('active-task-row');
+                    } else {
+                        console.log('隐藏详情行');
+                        // 隐藏当前详情行
+                        detailRow.style.display = 'none';
+                        this.classList.remove('active-task-row');
+                    }
+                });
+                console.log('已为任务行绑定点击事件:', row.getAttribute('data-task-id'));
+            });
+            
+            // 阻止详情行的点击事件冒泡
+            document.querySelectorAll('.task-detail-row').forEach(row => {
+                row.addEventListener('click', function(event) {
+                    event.stopPropagation();
+                });
+                console.log('已阻止详情行的点击事件冒泡:', row.id);
             });
         }
     });
