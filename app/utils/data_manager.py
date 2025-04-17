@@ -989,46 +989,34 @@ class DataManager:
                 if not target_storages:
                     continue
                 
-                # 为每个目标存储创建一个任务
-                for j, target_storage in enumerate(target_storages):
-                    # 跳过目标与源相同的情况
-                    if target_storage == source_storage:
-                        continue
-                    
-                    # 生成任务名称，添加目标信息
-                    storage_task_name = task_name
-                    if len(target_storages) > 1:
-                        storage_name = target_storage.split('/')[-1] if '/' in target_storage else target_storage
-                        storage_task_name = f"{task_name} - {storage_name}"
-                    
-                    # 格式化源路径和目标路径
-                    source_path = f"{source_storage}/{sync_dirs}"
-                    dest_path = f"{target_storage}/{sync_dirs}"
-                    
-                    # 创建任务数据
-                    task_data = {
-                        "id": len(converted_tasks) + 1,  # 确保ID唯一
-                        "name": storage_task_name,
-                        "connection_id": 1,  # 默认连接ID
-                        "source_connection_id": source_storage,
-                        "source_connection_name": source_storage,
-                        "target_connection_ids": [target_storage],
-                        "target_connection_names": target_storage,
-                        "source_path": sync_dirs,
-                        "target_path": sync_dirs,
-                        "sync_type": sync_type,
-                        "sync_diff_action": sync_del_action,
-                        "schedule": schedule,
-                        "file_filter": file_filter,
-                        "enabled": True,
-                        "created_at": self.format_timestamp(int(time.time())),
-                        "updated_at": self.format_timestamp(int(time.time())),
-                        "last_run": "",
-                        "next_run": "",
-                        "status": "pending"
-                    }
-                    
-                    converted_tasks.append(task_data)
+                # 创建单个任务包含所有目标存储
+                # 格式化源路径
+                source_path = sync_dirs
+                
+                # 创建任务数据
+                task_data = {
+                    "id": len(converted_tasks) + 1,  # 确保ID唯一
+                    "name": task_name,
+                    "connection_id": 1,  # 默认连接ID
+                    "source_connection_id": source_storage,
+                    "source_connection_name": source_storage,
+                    "target_connection_ids": target_storages,
+                    "target_connection_names": ",".join([ts.split('/')[-1] if '/' in ts else ts for ts in target_storages]),
+                    "source_path": sync_dirs,
+                    "target_path": sync_dirs,
+                    "sync_type": sync_type,
+                    "sync_diff_action": sync_del_action,
+                    "schedule": schedule,
+                    "file_filter": file_filter,
+                    "enabled": True,
+                    "created_at": self.format_timestamp(int(time.time())),
+                    "updated_at": self.format_timestamp(int(time.time())),
+                    "last_run": "",
+                    "next_run": "",
+                    "status": "pending"
+                }
+                
+                converted_tasks.append(task_data)
         
         return {
             "users": users,
