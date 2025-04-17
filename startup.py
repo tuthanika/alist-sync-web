@@ -15,9 +15,9 @@ import logging
 from datetime import datetime
 
 # 设置时区
-os.environ['TZ'] = 'Asia/Shanghai'
-if hasattr(time, 'tzset'):
-    time.tzset()
+# os.environ['TZ'] = 'Asia/Shanghai'
+# if hasattr(time, 'tzset'):
+#     time.tzset()
 
 # 添加当前目录到PYTHONPATH
 root_dir = os.path.dirname(os.path.abspath(__file__))
@@ -43,7 +43,7 @@ def print_app_info():
     print(f"Python解释器: {sys.executable}")
     print(f"当前工作目录: {os.getcwd()}")
     print(f"当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"时区设置: {os.environ['TZ']}")
+    # print(f"时区设置: {os.environ['TZ']}")
     
     with app.app_context():
         print("\n===== 应用配置信息 =====")

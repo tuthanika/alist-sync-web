@@ -65,7 +65,7 @@
 {% block content %}
 <div class="row">
     <div class="col-12">
-        <div class="card bg-dark-subtle">
+        <div class="card bg-white shadow-sm">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">任务列表</h5>
                 <div>
@@ -76,11 +76,11 @@
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-dark table-hover table-striped mb-0">
+                    <table class="table table-hover table-striped mb-0 task-list-table">
                         <thead>
                             <tr>
                                 <th>ID</th>
-                                <th>任务名称</th>
+                                <th class="task-name-column">任务名称</th>
                                 <th>源连接</th>
                                 <th>目标连接</th>
                                 <th>同步模式</th>
@@ -139,7 +139,7 @@
                                 </tr>
                                 <tr class="task-detail-row" id="task-detail-{{ task.id }}" style="display: none;">
                                     <td colspan="10">
-                                        <div class="card bg-dark mb-0">
+                                        <div class="card tech-card mb-0">
                                             <div class="card-body">
                                                 <h5 class="card-title">任务详情</h5>
                                                 <div class="row">
@@ -205,21 +205,22 @@
 <!-- 添加任务模态框 -->
 <div class="modal fade" id="addTaskModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content bg-dark text-light">
+        <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">添加同步任务</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+                <div id="addTaskModalMessages"></div>
                 <form id="taskForm">
                     <div class="mb-3">
                         <label for="taskName" class="form-label">任务名称</label>
-                        <input type="text" class="form-control bg-dark text-light" id="taskName" required>
+                        <input type="text" class="form-control" id="taskName" required>
                     </div>
                     
                     <div class="mb-3">
                         <label for="connectionSelector" class="form-label">选择连接器</label>
-                        <select class="form-select bg-dark text-light" id="connectionSelector" required>
+                        <select class="form-select" id="connectionSelector" required>
                             <option value="">选择连接器</option>
                             <!-- 通过JavaScript动态添加连接选项 -->
                         </select>
@@ -228,34 +229,34 @@
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="sourceConnection" class="form-label">源连接</label>
-                            <select class="form-select bg-dark text-light" id="sourceConnection" required>
+                            <select class="form-select" id="sourceConnection" required>
                                 <option value="">选择源连接</option>
                                 <!-- 根据选择的连接器动态加载存储列表 -->
                             </select>
                         </div>
                         <div class="col-md-6">
                             <label for="targetConnections" class="form-label">目标连接</label>
-                            <select class="form-select bg-dark text-light" id="targetConnections" multiple required>
+                            <select class="form-select" id="targetConnections" multiple required>
                                 <!-- 目标连接为多选 -->
                             </select>
-                            <div class="form-text text-muted">按住Ctrl键可多选</div>
+                            <div class="form-text">按住Ctrl键可多选</div>
                         </div>
                     </div>
                     
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="sourcePath" class="form-label">源路径</label>
-                            <input type="text" class="form-control bg-dark text-light" id="sourcePath" placeholder="/" required>
+                            <input type="text" class="form-control" id="sourcePath" placeholder="/" required>
                         </div>
                         <div class="col-md-6">
                             <label for="targetPath" class="form-label">目标路径</label>
-                            <input type="text" class="form-control bg-dark text-light" id="targetPath" placeholder="/" required>
+                            <input type="text" class="form-control" id="targetPath" placeholder="/" required>
                         </div>
                     </div>
                     
                     <div class="mb-3">
                         <label for="syncType" class="form-label">同步模式</label>
-                        <select class="form-select bg-dark text-light" id="syncType" required>
+                        <select class="form-select" id="syncType" required>
                             <option value="file_sync">文件同步</option>
                             <option value="file_move">文件移动</option>
                         </select>
@@ -263,23 +264,23 @@
                     
                     <div class="mb-3">
                         <label for="syncDiffAction" class="form-label">差异项处理策略</label>
-                        <select class="form-select bg-dark text-light" id="syncDiffAction">
+                        <select class="form-select" id="syncDiffAction">
                             <option value="none">不处理目标目录差异项</option>
                             <option value="move">移至目标目录回收站</option>
                             <option value="delete">删除目标目录多余项</option>
                         </select>
-                        <div class="form-text text-muted">注意：选择"文件移动"模式时，差异项处理策略将被禁用</div>
+                        <div class="form-text">注意：选择"文件移动"模式时，差异项处理策略将被禁用</div>
                     </div>
                     
                     <div class="mb-3">
                         <label for="schedule" class="form-label">计划 (Cron 表达式，留空表示手动)</label>
-                        <input type="text" class="form-control bg-dark text-light" id="schedule" placeholder="*/30 * * * *">
-                        <div class="form-text text-muted">示例：*/30 * * * * (每30分钟)</div>
+                        <input type="text" class="form-control" id="schedule" placeholder="*/30 * * * *">
+                        <div class="form-text">示例：*/30 * * * * (每30分钟)</div>
                     </div>
                     
                     <div class="mb-3">
                         <label for="fileFilter" class="form-label">文件过滤 (正则表达式，留空表示无过滤)</label>
-                        <input type="text" class="form-control bg-dark text-light" id="fileFilter" placeholder="\.jpg$|\.png$">
+                        <input type="text" class="form-control" id="fileFilter" placeholder="\.jpg$|\.png$">
                     </div>
                     
                     <div class="form-check form-switch mb-3">
@@ -299,22 +300,23 @@
 <!-- 编辑任务模态框 -->
 <div class="modal fade" id="editTaskModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content bg-dark text-light">
+        <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">编辑同步任务</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+                <div id="editTaskModalMessages"></div>
                 <form id="editTaskForm">
                     <input type="hidden" id="editTaskId">
                     <div class="mb-3">
                         <label for="editTaskName" class="form-label">任务名称</label>
-                        <input type="text" class="form-control bg-dark text-light" id="editTaskName" required>
+                        <input type="text" class="form-control" id="editTaskName" required>
                     </div>
                     
                     <div class="mb-3">
                         <label for="editConnectionSelector" class="form-label">选择连接器</label>
-                        <select class="form-select bg-dark text-light" id="editConnectionSelector" required>
+                        <select class="form-select" id="editConnectionSelector" required>
                             <option value="">选择连接器</option>
                             <!-- 通过JavaScript动态添加连接选项 -->
                         </select>
@@ -323,34 +325,34 @@
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="editSourceConnection" class="form-label">源连接</label>
-                            <select class="form-select bg-dark text-light" id="editSourceConnection" required>
+                            <select class="form-select" id="editSourceConnection" required>
                                 <option value="">选择源连接</option>
                                 <!-- 根据选择的连接器动态加载存储列表 -->
                             </select>
                         </div>
                         <div class="col-md-6">
                             <label for="editTargetConnections" class="form-label">目标连接</label>
-                            <select class="form-select bg-dark text-light" id="editTargetConnections" multiple required>
+                            <select class="form-select" id="editTargetConnections" multiple required>
                                 <!-- 目标连接为多选 -->
                             </select>
-                            <div class="form-text text-muted">按住Ctrl键可多选</div>
+                            <div class="form-text">按住Ctrl键可多选</div>
                         </div>
                     </div>
                     
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="editSourcePath" class="form-label">源路径</label>
-                            <input type="text" class="form-control bg-dark text-light" id="editSourcePath" placeholder="/" required>
+                            <input type="text" class="form-control" id="editSourcePath" placeholder="/" required>
                         </div>
                         <div class="col-md-6">
                             <label for="editTargetPath" class="form-label">目标路径</label>
-                            <input type="text" class="form-control bg-dark text-light" id="editTargetPath" placeholder="/" required>
+                            <input type="text" class="form-control" id="editTargetPath" placeholder="/" required>
                         </div>
                     </div>
                     
                     <div class="mb-3">
                         <label for="editSyncType" class="form-label">同步模式</label>
-                        <select class="form-select bg-dark text-light" id="editSyncType" required>
+                        <select class="form-select" id="editSyncType" required>
                             <option value="file_sync">文件同步</option>
                             <option value="file_move">文件移动</option>
                         </select>
@@ -358,23 +360,23 @@
                     
                     <div class="mb-3">
                         <label for="editSyncDiffAction" class="form-label">差异项处理策略</label>
-                        <select class="form-select bg-dark text-light" id="editSyncDiffAction">
+                        <select class="form-select" id="editSyncDiffAction">
                             <option value="none">不处理目标目录差异项</option>
                             <option value="move">移至目标目录回收站</option>
                             <option value="delete">删除目标目录多余项</option>
                         </select>
-                        <div class="form-text text-muted">注意：选择"文件移动"模式时，差异项处理策略将被禁用</div>
+                        <div class="form-text">注意：选择"文件移动"模式时，差异项处理策略将被禁用</div>
                     </div>
                     
                     <div class="mb-3">
                         <label for="editSchedule" class="form-label">计划 (Cron 表达式，留空表示手动)</label>
-                        <input type="text" class="form-control bg-dark text-light" id="editSchedule" placeholder="*/30 * * * *">
-                        <div class="form-text text-muted">示例：*/30 * * * * (每30分钟)</div>
+                        <input type="text" class="form-control" id="editSchedule" placeholder="*/30 * * * *">
+                        <div class="form-text">示例：*/30 * * * * (每30分钟)</div>
                     </div>
                     
                     <div class="mb-3">
                         <label for="editFileFilter" class="form-label">文件过滤 (正则表达式，留空表示无过滤)</label>
-                        <input type="text" class="form-control bg-dark text-light" id="editFileFilter" placeholder="\.jpg$|\.png$">
+                        <input type="text" class="form-control" id="editFileFilter" placeholder="\.jpg$|\.png$">
                     </div>
                     
                     <div class="form-check form-switch mb-3">
@@ -394,10 +396,10 @@
 <!-- 确认删除模态框 -->
 <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
-        <div class="modal-content bg-dark text-light">
+        <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">确认删除</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p>确定要删除此任务吗？该操作不可恢复。</p>
@@ -414,15 +416,15 @@
 <!-- 任务实例列表模态框 -->
 <div class="modal fade" id="taskInstancesModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content bg-dark text-light">
+        <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">任务实例列表</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <h6 id="instancesTaskName" class="mb-3"></h6>
                 <div class="table-responsive">
-                    <table class="table table-dark table-hover table-striped mb-0">
+                    <table class="table table-hover table-striped mb-0">
                         <thead>
                             <tr>
                                 <th>ID</th>
@@ -449,15 +451,15 @@
 
 <!-- 任务日志查看模态框 -->
 <div class="modal fade" id="taskLogModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
-        <div class="modal-content bg-dark text-light">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">任务执行日志</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <h6 id="logTaskName" class="mb-3"></h6>
-                <div class="bg-dark-subtle p-3 text-light" style="border-radius: 5px; max-height: 500px; overflow-y: auto;">
+                <div id="logContent" class="bg-light p-3 rounded" style="max-height: 500px; overflow-y: auto; white-space: pre-wrap;">
                     <pre id="task-log-content" class="mb-0" style="white-space: pre-wrap;"></pre>
                 </div>
             </div>
@@ -488,6 +490,12 @@
         // 为已存在的任务行添加事件
         console.log('为当前任务行添加事件...');
         attachTaskRowEvents();
+        
+        // 初始绑定删除确认按钮事件
+        document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+            const taskId = document.getElementById('deleteTaskId').value;
+            deleteTask(taskId, this);
+        });
         
         // 延迟检查任务行事件绑定
         setTimeout(function() {
@@ -660,11 +668,14 @@
         
         // 保存任务按钮
         document.getElementById('saveTaskBtn').addEventListener('click', function() {
+            console.log('保存任务按钮被点击');
+            
             // 验证必填字段
             const taskName = document.getElementById('taskName');
             if (!taskName.value.trim()) {
-                showAlert('请输入任务名称', 'warning');
+                showAddTaskMessage('请输入任务名称', 'warning');
                 taskName.focus();
+                console.log('验证失败：任务名称为空');
                 return;
             }
             
@@ -676,20 +687,23 @@
             });
             
             if (!sourceConn.value) {
-                showAlert('请选择源连接', 'warning');
+                showAddTaskMessage('请选择源连接', 'warning');
                 sourceConn.focus();
+                console.log('验证失败：未选择源连接');
                 return;
             }
             
             if (targetConns.length === 0) {
-                showAlert('请至少选择一个目标连接', 'warning');
+                showAddTaskMessage('请至少选择一个目标连接', 'warning');
                 document.getElementById('targetConnections').focus();
+                console.log('验证失败：未选择目标连接');
                 return;
             }
             
             // 禁用按钮，显示加载状态
             this.disabled = true;
             this.innerHTML = '<i class="bi bi-hourglass-split"></i> 保存中...';
+            console.log('按钮已禁用，显示加载状态');
             
             // 准备表单数据
             const taskData = {
@@ -717,6 +731,7 @@
             }
             
             // 发送AJAX请求保存任务
+            console.log('开始发送AJAX请求');
             fetch('/api/tasks', {
                 method: 'POST',
                 headers: {
@@ -725,16 +740,28 @@
                 body: JSON.stringify(taskData),
             })
             .then(response => {
+                console.log('收到AJAX响应:', response.status, response.statusText);
                 if (!response.ok) {
-                    throw new Error('网络响应错误');
+                    throw new Error(`网络响应错误: ${response.status} ${response.statusText}`);
                 }
                 return response.json();
             })
             .then(data => {
+                console.log('解析响应数据:', data);
                 if (data.status === 'success') {
                     showAlert('任务添加成功', 'success');
-                    // 关闭模态框
-                    $('#addTaskModal').modal('hide');
+                    // 关闭模态框 - 使用Bootstrap 5的方式关闭
+                    const modalElement = document.getElementById('addTaskModal');
+                    console.log('获取到模态框元素:', modalElement);
+                    
+                    try {
+                        const bsModal = bootstrap.Modal.getOrCreateInstance(modalElement);
+                        console.log('使用getOrCreateInstance获取模态框实例:', bsModal);
+                        bsModal.hide();
+                        console.log('模态框已关闭');
+                    } catch (modalError) {
+                        console.error('关闭模态框时出错:', modalError);
+                    }
                     // 刷新任务列表而不是整个页面
                     loadTasks();
                     
@@ -765,11 +792,15 @@
             .catch(error => {
                 console.error('保存任务失败:', error);
                 showAlert('保存任务失败: ' + error.message, 'danger');
+                
+                // 在控制台显示更多错误信息
+                console.log('请检查控制台完整错误信息和网络请求');
             })
             .finally(() => {
                 // 恢复按钮状态
                 this.disabled = false;
                 this.innerHTML = '保存任务';
+                console.log('按钮状态已恢复');
             });
         });
         
@@ -909,7 +940,17 @@
                 if (data.status === 'success') {
                     showAlert(taskId ? '任务更新成功' : '任务创建成功', 'success');
                     // 关闭模态框并刷新任务列表
-                    $('#editTaskModal').modal('hide');
+                    const modalElement = document.getElementById('editTaskModal');
+                    console.log('获取到编辑模态框元素:', modalElement);
+                    
+                    try {
+                        const bsModal = bootstrap.Modal.getOrCreateInstance(modalElement);
+                        console.log('使用getOrCreateInstance获取编辑模态框实例:', bsModal);
+                        bsModal.hide();
+                        console.log('编辑模态框已关闭');
+                    } catch (modalError) {
+                        console.error('关闭编辑模态框时出错:', modalError);
+                    }
                     loadTasks();
                     
                     // 重新加载调度器以更新任务计划
@@ -952,51 +993,19 @@
             button.addEventListener('click', function() {
                 const taskId = this.getAttribute('data-task-id');
                 document.getElementById('deleteTaskId').value = taskId;
+                
+                // 重新绑定确认删除按钮的事件处理函数
+                const confirmBtn = document.getElementById('confirmDeleteBtn');
+                // 移除之前可能存在的事件监听器
+                const newConfirmBtn = confirmBtn.cloneNode(true);
+                confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+                
+                // 为新按钮添加事件监听器
+                newConfirmBtn.addEventListener('click', function() {
+                    deleteTask(taskId, this);
+                });
+                
                 new bootstrap.Modal(document.getElementById('confirmDeleteModal')).show();
-            });
-        });
-        
-        // 确认删除按钮
-        document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
-            const taskId = document.getElementById('deleteTaskId').value;
-            
-            // 禁用按钮，显示加载状态
-            this.disabled = true;
-            this.innerHTML = '<i class="bi bi-hourglass-split"></i> 删除中...';
-            
-            // 发送AJAX请求删除任务
-            fetch(`/api/tasks/${taskId}`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('网络响应错误');
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.status === 'success') {
-                    // 替换alert为showAlert
-                    showAlert(`任务 ${taskId} 已删除`, 'success');
-                    // 关闭模态框
-                    bootstrap.Modal.getInstance(document.getElementById('confirmDeleteModal')).hide();
-                    // 刷新任务列表而不是整个页面
-                    loadTasks();
-                } else {
-                    throw new Error(data.message || '删除失败');
-                }
-            })
-            .catch(error => {
-                console.error('删除任务失败:', error);
-                alert('删除任务失败: ' + error.message);
-            })
-            .finally(() => {
-                // 恢复按钮状态
-                this.disabled = false;
-                this.innerHTML = '确认删除';
             });
         });
         
@@ -1332,21 +1341,43 @@
         
         // 辅助函数：加载任务日志
         function loadTaskLog(instanceId) {
-            const logContent = document.getElementById('task-log-content');
-            logContent.textContent = '加载中...';
+            const logContent = document.getElementById('logContent');
+            const logContentPre = document.getElementById('task-log-content');
+            
+            // 显示加载中状态 - 根据DOM结构选择正确的元素
+            if (logContentPre) {
+                logContentPre.textContent = '加载中...';
+            } else {
+                logContent.textContent = '加载中...';
+            }
             
             fetch(`/api/task-instances/${instanceId}/logs`)
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success' && data.logs && data.logs.length > 0) {
-                    logContent.textContent = data.logs.join('\n');
+                    const logText = data.logs.join('\n');
+                    if (logContentPre) {
+                        logContentPre.textContent = logText;
+                    } else {
+                        logContent.textContent = logText;
+                    }
                 } else {
-                    logContent.textContent = '没有找到日志记录';
+                    const emptyText = '没有找到日志记录';
+                    if (logContentPre) {
+                        logContentPre.textContent = emptyText;
+                    } else {
+                        logContent.textContent = emptyText;
+                    }
                 }
             })
             .catch(error => {
                 console.error('加载任务日志失败:', error);
-                logContent.textContent = '加载日志失败: ' + error.message;
+                const errorText = '加载日志失败: ' + error.message;
+                if (logContentPre) {
+                    logContentPre.textContent = errorText;
+                } else {
+                    logContent.textContent = errorText;
+                }
             });
         }
         
@@ -1362,6 +1393,36 @@
                 default:
                     return '<span class="badge bg-secondary">未知</span>';
             }
+        }
+        
+        // 辅助函数：显示添加任务模态框中的消息
+        function showAddTaskMessage(message, type = 'warning') {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `alert alert-${type} alert-dismissible fade show`;
+            messageDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            
+            // 获取添加模态框的消息容器
+            const messageContainer = document.getElementById('addTaskModalMessages') || document.querySelector('#addTaskModal .modal-body');
+            
+            // 清除已有消息
+            const existingMessages = messageContainer.querySelectorAll('.alert');
+            existingMessages.forEach(msg => msg.remove());
+            
+            // 添加新消息到容器的顶部
+            messageContainer.insertBefore(messageDiv, messageContainer.firstChild);
+            
+            // 3秒后自动消失
+            setTimeout(() => {
+                messageDiv.classList.remove('show');
+                setTimeout(() => {
+                    if (messageDiv.parentNode) {
+                        messageDiv.parentNode.removeChild(messageDiv);
+                    }
+                }, 150);
+            }, 3000);
         }
         
         // 辅助函数：显示编辑模态框中的消息
@@ -1493,7 +1554,7 @@
                         // 设置详情行内容
                         detailRow.innerHTML = `
                             <td colspan="10">
-                                <div class="card bg-dark mb-0">
+                                <div class="card tech-card mb-0">
                                     <div class="card-body">
                                         <h5 class="card-title">任务详情</h5>
                                         <div class="row">
@@ -1623,6 +1684,18 @@
                 button.addEventListener('click', function() {
                     const taskId = this.getAttribute('data-task-id');
                     document.getElementById('deleteTaskId').value = taskId;
+                    
+                    // 重新绑定确认删除按钮的事件处理函数
+                    const confirmBtn = document.getElementById('confirmDeleteBtn');
+                    // 移除之前可能存在的事件监听器
+                    const newConfirmBtn = confirmBtn.cloneNode(true);
+                    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+                    
+                    // 为新按钮添加事件监听器
+                    newConfirmBtn.addEventListener('click', function() {
+                        deleteTask(taskId, this);
+                    });
+                    
                     new bootstrap.Modal(document.getElementById('confirmDeleteModal')).show();
                 });
             });
@@ -1777,7 +1850,7 @@
                         document.querySelectorAll('.task-detail-row').forEach(row => {
                             if (row.id !== `task-detail-${taskId}`) {
                                 row.style.display = 'none';
-                                // 移除其他行的激活状态
+                                // 移除其他行的活动状态
                                 const otherId = row.id.replace('task-detail-', '');
                                 const otherRow = document.querySelector(`.task-row[data-task-id="${otherId}"]`);
                                 if (otherRow) otherRow.classList.remove('active-task-row');
@@ -1804,6 +1877,78 @@
                 });
                 console.log('已阻止详情行的点击事件冒泡:', row.id);
             });
+        }
+        
+        // 将删除任务的逻辑提取到一个单独的函数
+        function deleteTask(taskId, buttonElement) {
+            // 禁用按钮，显示加载状态
+            buttonElement.disabled = true;
+            buttonElement.innerHTML = '<i class="bi bi-hourglass-split"></i> 删除中...';
+            
+            // 发送AJAX请求删除任务
+            fetch(`/api/tasks/${taskId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('网络响应错误');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === 'success') {
+                    // 显示成功消息
+                    showAlert(`任务 ${taskId} 已删除`, 'success');
+                    // 关闭模态框
+                    bootstrap.Modal.getInstance(document.getElementById('confirmDeleteModal')).hide();
+                    // 刷新任务列表
+                    loadTasks();
+                } else {
+                    throw new Error(data.message || '删除失败');
+                }
+            })
+            .catch(error => {
+                console.error('删除任务失败:', error);
+                showAlert('删除任务失败: ' + error.message, 'danger');
+            })
+            .finally(() => {
+                // 恢复按钮状态
+                buttonElement.disabled = false;
+                buttonElement.innerHTML = '确认删除';
+            });
+        }
+        
+        // 辅助函数：显示添加任务模态框中的消息
+        function showAddTaskMessage(message, type = 'warning') {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `alert alert-${type} alert-dismissible fade show`;
+            messageDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            
+            // 获取添加模态框的消息容器
+            const messageContainer = document.getElementById('addTaskModalMessages') || document.querySelector('#addTaskModal .modal-body');
+            
+            // 清除已有消息
+            const existingMessages = messageContainer.querySelectorAll('.alert');
+            existingMessages.forEach(msg => msg.remove());
+            
+            // 添加新消息到容器的顶部
+            messageContainer.insertBefore(messageDiv, messageContainer.firstChild);
+            
+            // 3秒后自动消失
+            setTimeout(() => {
+                messageDiv.classList.remove('show');
+                setTimeout(() => {
+                    if (messageDiv.parentNode) {
+                        messageDiv.parentNode.removeChild(messageDiv);
+                    }
+                }, 150);
+            }, 3000);
         }
     });
 </script>

@@ -1,15 +1,17 @@
 /* Alist-Sync 科技风格样式 */
 :root {
-    --primary-bg: #121212;
-    --secondary-bg: #1e1e1e;
+    --primary-bg: #f8f9fa;
+    --secondary-bg: #ffffff;
     --accent-color: #0d6efd;
     --accent-hover: #0b5ed7;
-    --text-color: #f8f9fa;
-    --border-color: #2d2d2d;
+    --text-color: #212529;
+    --border-color: #dee2e6;
     --success-color: #198754;
     --info-color: #0dcaf0;
     --warning-color: #ffc107;
     --danger-color: #dc3545;
+    --light-accent: #e6f0ff;
+    --card-shadow: rgba(0, 0, 0, 0.08);
 }
 
 body {
@@ -30,6 +32,63 @@ body {
 .sidebar .logo {
     font-weight: 700;
     letter-spacing: 1px;
+    color: var(--accent-color);
+}
+
+/* 侧边栏导航项目样式 */
+.sidebar .nav-link {
+    color: var(--text-color);
+    border-radius: 4px;
+    margin-bottom: 2px;
+    transition: all 0.2s ease;
+}
+
+.sidebar .nav-link:hover {
+    background-color: var(--light-accent);
+    color: var(--accent-color);
+}
+
+.sidebar .nav-link.active {
+    background-color: var(--accent-color);
+    color: #ffffff;
+}
+
+.sidebar .nav-link i {
+    color: var(--accent-color);
+}
+
+.sidebar .nav-link.active i {
+    color: #ffffff;
+}
+
+.sidebar hr {
+    border-color: var(--border-color);
+    opacity: 0.5;
+}
+
+.sidebar .dropdown-toggle {
+    color: var(--text-color);
+}
+
+.sidebar .dropdown-toggle .rounded-circle {
+    background-color: var(--light-accent) !important;
+}
+
+.sidebar .dropdown-toggle i {
+    color: var(--accent-color);
+}
+
+.sidebar .small {
+    color: var(--text-color);
+}
+
+.sidebar .text-white-50 {
+    color: var(--text-color) !important;
+    opacity: 0.6;
+}
+
+.sidebar .text-white-50:hover {
+    opacity: 1;
 }
 
 .main-content {
@@ -50,7 +109,7 @@ body {
     border: 1px solid var(--border-color);
     border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px var(--card-shadow);
     transition: transform 0.3s ease;
 }
 
@@ -78,6 +137,59 @@ body {
     text-transform: uppercase;
     font-size: 0.8rem;
     letter-spacing: 1px;
+    color: var(--accent-color);
+}
+
+/* 任务列表表格样式 */
+.task-list-table th:first-child, 
+.task-list-table td:first-child {  /* ID列 */
+    width: 5%;
+    min-width: 50px;
+}
+
+.task-list-table th.task-name-column,
+.task-list-table td:nth-child(2) {  /* 任务名称列 */
+    min-width: 220px;
+    width: 25%;
+    max-width: 300px;
+}
+
+.task-list-table td:nth-child(2) {  /* 任务名称单元格 */
+    word-break: break-word;
+    white-space: normal;
+    overflow-wrap: break-word;
+}
+
+.task-list-table th:nth-child(3), 
+.task-list-table td:nth-child(3),  /* 源连接列 */
+.task-list-table th:nth-child(4), 
+.task-list-table td:nth-child(4) {  /* 目标连接列 */
+    width: 10%;
+    min-width: 100px;
+}
+
+.task-list-table th:last-child, 
+.task-list-table td:last-child {  /* 操作列 */
+    width: 12%;
+    min-width: 120px;
+    white-space: nowrap;
+}
+
+/* 响应式调整，保持任务名称列的宽度 */
+@media (max-width: 1200px) {
+    .task-list-table th.task-name-column,
+    .task-list-table td:nth-child(2) {
+        min-width: 180px;
+        width: 22%;
+    }
+}
+
+@media (max-width: 992px) {
+    .task-list-table th.task-name-column,
+    .task-list-table td:nth-child(2) {
+        min-width: 150px;
+        width: 20%;
+    }
 }
 
 .table-dark {
@@ -96,6 +208,15 @@ body {
     color: var(--text-color);
 }
 
+.form-control.bg-dark, 
+.form-select.bg-dark,
+.form-control.bg-dark.text-light, 
+.form-select.bg-dark.text-light {
+    background-color: var(--secondary-bg) !important;
+    color: var(--text-color) !important;
+    border-color: var(--border-color);
+}
+
 .form-control:focus, .form-select:focus {
     background-color: var(--secondary-bg);
     border-color: var(--accent-color);
@@ -104,7 +225,17 @@ body {
 }
 
 .form-control::placeholder {
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(33, 37, 41, 0.5);
+}
+
+.form-control.bg-dark::placeholder,
+.form-control.bg-dark.text-light::placeholder {
+    color: rgba(33, 37, 41, 0.5) !important;
+}
+
+.form-text.text-muted {
+    color: var(--text-color) !important;
+    opacity: 0.8;
 }
 
 .form-label {
@@ -211,7 +342,7 @@ body {
 .loading-spinner {
     width: 40px;
     height: 40px;
-    border: 4px solid rgba(255, 255, 255, 0.1);
+    border: 4px solid rgba(13, 110, 253, 0.1);
     border-left-color: var(--accent-color);
     border-radius: 50%;
     animation: spin 1s linear infinite;
@@ -221,4 +352,71 @@ body {
     to {
         transform: rotate(360deg);
     }
+}
+
+/* 暗色元素适配浅色主题 */
+.bg-dark {
+    background-color: var(--secondary-bg) !important;
+}
+
+.bg-dark-subtle {
+    background-color: var(--secondary-bg) !important;
+    border: 1px solid var(--border-color);
+}
+
+.text-light {
+    color: var(--text-color) !important;
+}
+
+.table-dark {
+    --bs-table-bg: var(--secondary-bg);
+    --bs-table-striped-bg: #f5f7fa;
+    --bs-table-striped-color: var(--text-color);
+    --bs-table-active-bg: #f0f4f8;
+    --bs-table-active-color: var(--text-color);
+    --bs-table-hover-bg: #f5f7fa;
+    --bs-table-hover-color: var(--text-color);
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+.table-dark.table-striped > tbody > tr:nth-of-type(odd) > * {
+    background-color: var(--primary-bg);
+    color: var(--text-color);
+}
+
+.table-dark.table-hover > tbody > tr:hover > * {
+    background-color: var(--light-accent);
+}
+
+.dropdown-menu-dark {
+    background-color: var(--secondary-bg);
+    border-color: var(--border-color);
+    color: var(--text-color);
+}
+
+.dropdown-item {
+    color: var(--text-color);
+}
+
+.dropdown-item:hover, .dropdown-item:focus {
+    background-color: var(--light-accent);
+    color: var(--text-color);
+}
+
+/* 科技风格元素 */
+.tech-card {
+    border-left: 3px solid var(--accent-color);
+    position: relative;
+}
+
+.tech-card::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 8px;
+    height: 8px;
+    background-color: var(--accent-color);
+    border-radius: 50%;
 } 
