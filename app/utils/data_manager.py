@@ -851,18 +851,89 @@ class DataManager:
         connections = self._read_json(self.connections_file)
         settings = self._read_json(self.settings_file)
         
+        # 获取所有存储路径（用于正确识别路径前缀）
+        storage_paths = self._get_storage_paths()
+        
         # 转换任务列表
         converted_tasks = []
         
         # 处理每个同步任务
         for i, sync_task in enumerate(config.get("tasks", [])):
-            # 检查任务的格式类型 - 新旧格式的处理
+            # 任务名称(如果没有则生成默认名称)
+            task_name = sync_task.get("taskName") or f"同步任务 {i+1}"
             
-            # --------- 旧格式处理 ---------
-            if "syncDirs" in sync_task and "->" in sync_task.get("syncDirs", ""):
-                # 旧格式: syncDirs包含"源目录->目标目录"格式
-                
-                # 提取source_dir和dst_dir
+            # 获取同步模式和差异项处理策略
+            sync_mode = sync_task.get("syncMode", "data")
+            sync_del_action = sync_task.get("syncDelAction", "none")
+            
+            # 映射旧格式同步模式到新格式
+            sync_type = "file_sync"  # 默认为文件同步
+            if sync_mode == "data" or sync_mode == "file":
+                sync_type = "file_sync"
+            elif sync_mode == "file_move":
+                sync_type = "file_move"
+            
+            # 获取计划和文件过滤器
+            schedule = self._convert_cron_format(sync_task.get("cron", ""))
+            file_filter = sync_task.get("excludeDirs", "")
+            
+            # --------- 处理不同的路径格式 ---------
+            
+            # 检查是否是包含paths数组的格式
+            if "paths" in sync_task and isinstance(sync_task["paths"], list):
+                # 处理包含多个源目标路径对的任务
+                for path_idx, path_item in enumerate(sync_task["paths"]):
+                    # 处理常规路径对
+                    src_path = None
+                    dst_path = None
+                    
+                    # 检查是否是移动模式的路径对
+                    if "srcPathMove" in path_item and "dstPathMove" in path_item:
+                        src_path = path_item.get("srcPathMove", "").strip()
+                        dst_path = path_item.get("dstPathMove", "").strip()
+                    # 检查是否是常规路径对
+                    elif "srcPath" in path_item and "dstPath" in path_item:
+                        src_path = path_item.get("srcPath", "").strip()
+                        dst_path = path_item.get("dstPath", "").strip()
+                        
+                    # 如果无法获取有效路径，跳过
+                    if not src_path or not dst_path:
+                        continue
+                        
+                    # 组装任务
+                    path_task_name = f"{task_name} - 路径{path_idx+1}" if len(sync_task["paths"]) > 1 else task_name
+                    
+                    # 智能拆分源路径和目标路径
+                    src_conn_id, src_real_path = self._split_path_with_storage_list(src_path, storage_paths)
+                    dst_conn_id, dst_real_path = self._split_path_with_storage_list(dst_path, storage_paths)
+                    
+                    # 创建任务数据
+                    task_data = {
+                        "id": len(converted_tasks) + 1,  # 确保ID唯一
+                        "name": path_task_name,
+                        "connection_id": 1,  # 默认连接ID
+                        "source_connection_id": src_conn_id,
+                        "source_connection_name": src_conn_id,
+                        "target_connection_ids": [dst_conn_id],
+                        "target_connection_names": dst_conn_id,
+                        "source_path": src_real_path,
+                        "target_path": dst_real_path,
+                        "sync_type": sync_type,
+                        "sync_diff_action": sync_del_action,
+                        "schedule": schedule,
+                        "file_filter": file_filter,
+                        "enabled": True,
+                        "created_at": self.format_timestamp(int(time.time())),
+                        "updated_at": self.format_timestamp(int(time.time())),
+                        "last_run": "",
+                        "next_run": "",
+                        "status": "pending"
+                    }
+                    
+                    converted_tasks.append(task_data)
+                    
+            # 处理旧格式: syncDirs包含"源目录->目标目录"格式
+            elif "syncDirs" in sync_task and "->" in sync_task.get("syncDirs", ""):
                 dirs = sync_task.get("syncDirs", "").strip()
                 if not dirs:
                     continue
@@ -874,31 +945,33 @@ class DataManager:
                 source_dir = parts[0].strip()
                 dst_dir = parts[1].strip()
                 
-                # 任务名称(如果没有则生成默认名称)
-                task_name = sync_task.get("name") or f"同步任务 {i+1}"
-                
-                converted_tasks.append({
-                    "id": i + 1,
+                # 创建任务
+                task_data = {
+                    "id": len(converted_tasks) + 1,
                     "name": task_name,
-                    "source_dir": source_dir,
-                    "destination_dir": dst_dir,
-                    "enabled": sync_task.get("enabled", True),
-                    "sync_delete": sync_task.get("syncDel", False),
-                    "sync_move": sync_task.get("syncMove", False),
-                    "sync_update": True,
-                    "use_regex": bool(sync_task.get("regex")),
-                    "regex_pattern": sync_task.get("regex", ""),
-                    "schedule": self._convert_cron_format(sync_task.get("cron", "")),
-                    "file_filter": sync_task.get("excludeDirs", ""),
+                    "connection_id": 1,  # 默认连接ID
+                    "source_connection_id": "",
+                    "source_connection_name": "",
+                    "target_connection_ids": [""],
+                    "target_connection_names": "",
+                    "source_path": source_dir,
+                    "target_path": dst_dir,
+                    "sync_type": sync_type,
+                    "sync_diff_action": sync_del_action,
+                    "schedule": schedule,
+                    "file_filter": file_filter,
+                    "enabled": True,
                     "created_at": self.format_timestamp(int(time.time())),
                     "updated_at": self.format_timestamp(int(time.time())),
                     "last_run": "",
                     "next_run": "",
                     "status": "pending"
-                })
-            # --------- 新格式处理 ---------
+                }
+                
+                converted_tasks.append(task_data)
+                
+            # 处理标准格式: 有sourceStorage和targetStorages
             elif "syncDirs" in sync_task and "sourceStorage" in sync_task and "targetStorages" in sync_task:
-                # 新格式: 有sourceStorage和targetStorages
                 source_storage = sync_task.get("sourceStorage", "").strip()
                 sync_dirs = sync_task.get("syncDirs", "").strip()
                 
@@ -923,41 +996,39 @@ class DataManager:
                         continue
                     
                     # 生成任务名称，添加目标信息
-                    task_name = sync_task.get("taskName") or f"同步任务 {i+1}"
+                    storage_task_name = task_name
                     if len(target_storages) > 1:
                         storage_name = target_storage.split('/')[-1] if '/' in target_storage else target_storage
-                        task_name = f"{task_name} - {storage_name}"
+                        storage_task_name = f"{task_name} - {storage_name}"
                     
                     # 格式化源路径和目标路径
                     source_path = f"{source_storage}/{sync_dirs}"
                     dest_path = f"{target_storage}/{sync_dirs}"
                     
-                    # 处理删除行为
-                    sync_del_action = sync_task.get("syncDelAction", "none")
-                    sync_delete = False
-                    if sync_del_action == "delete":
-                        sync_delete = True
-                    
-                    converted_tasks.append({
+                    # 创建任务数据
+                    task_data = {
                         "id": len(converted_tasks) + 1,  # 确保ID唯一
-                        "name": task_name,
-                        "source_dir": source_path,
-                        "destination_dir": dest_path,
+                        "name": storage_task_name,
+                        "connection_id": 1,  # 默认连接ID
+                        "source_connection_id": source_storage,
+                        "source_connection_name": source_storage,
+                        "target_connection_ids": [target_storage],
+                        "target_connection_names": target_storage,
+                        "source_path": sync_dirs,
+                        "target_path": sync_dirs,
+                        "sync_type": sync_type,
+                        "sync_diff_action": sync_del_action,
+                        "schedule": schedule,
+                        "file_filter": file_filter,
                         "enabled": True,
-                        "sync_delete": sync_delete,
-                        "sync_move": False,  # 新格式中没有这个选项
-                        "sync_update": True,
-                        "use_regex": False,  # 新格式中没有这个选项
-                        "regex_pattern": "",
-                        "schedule": self._convert_cron_format(sync_task.get("cron", "")),
-                        "file_filter": sync_task.get("excludeDirs", ""),
-                        "sync_mode": sync_task.get("syncMode", "data"),  # 新增同步模式选项
                         "created_at": self.format_timestamp(int(time.time())),
                         "updated_at": self.format_timestamp(int(time.time())),
                         "last_run": "",
                         "next_run": "",
                         "status": "pending"
-                    })
+                    }
+                    
+                    converted_tasks.append(task_data)
         
         return {
             "users": users,
@@ -965,6 +1036,85 @@ class DataManager:
             "tasks": converted_tasks,
             "settings": settings
         }
+    
+    def _get_storage_paths(self):
+        """获取所有存储路径列表，用于智能拆分导入路径
+        
+        Returns:
+            list: 存储路径列表，按照长度从长到短排序
+        """
+        # 从配置文件获取已保存的连接信息
+        connections = self._read_json(self.connections_file)
+        if not connections:
+            return []
+            
+        # 收集所有可能的存储路径
+        all_storage_paths = []
+        
+        # 从连接中获取存储路径
+        from app.alist_sync import AlistSync
+        for conn in connections:
+            try:
+                # 创建AlistSync实例
+                alist = AlistSync(
+                    conn.get('server'),
+                    conn.get('username'),
+                    conn.get('password'),
+                    conn.get('token')
+                )
+                
+                # 尝试登录
+                if alist.login():
+                    # 获取存储列表
+                    storage_list = alist.get_storage_list()
+                    if isinstance(storage_list, list):
+                        all_storage_paths.extend(storage_list)
+                
+                # 关闭连接
+                alist.close()
+            except Exception as e:
+                # 忽略连接错误，继续处理其他连接
+                continue
+        
+        # 删除重复项
+        all_storage_paths = list(set(all_storage_paths))
+        
+        # 按长度从长到短排序，以确保匹配最具体的路径
+        all_storage_paths.sort(key=len, reverse=True)
+        
+        return all_storage_paths
+        
+    def _split_path_with_storage_list(self, full_path, storage_paths):
+        """使用存储路径列表智能拆分完整路径
+        
+        Args:
+            full_path (str): 完整路径
+            storage_paths (list): 存储路径列表
+            
+        Returns:
+            tuple: (存储路径, 实际路径)
+        """
+        # 默认使用简单拆分方式（/dav/xxx/）
+        # 先尝试匹配存储路径
+        if storage_paths:
+            for storage in storage_paths:
+                if full_path.startswith(storage):
+                    # 找到匹配的存储路径
+                    real_path = full_path[len(storage):] if full_path.startswith(storage) else full_path
+                    # 确保实际路径前面有斜杠
+                    if not real_path.startswith('/'):
+                        real_path = '/' + real_path
+                    return storage, real_path
+        
+        # 如果没有匹配到存储路径，使用默认的拆分方式
+        parts = full_path.split('/', 2)
+        if len(parts) >= 3:  # 格式应该是 /dav/xxx/actual_path
+            storage_path = f"/{parts[1]}/{parts[2]}" if parts[1] and parts[2] else ""
+            actual_path = f"/{parts[3]}" if len(parts) > 3 and parts[3] else "/"
+            return storage_path, actual_path
+        
+        # 无法拆分，返回整个路径作为存储路径，根目录作为实际路径
+        return full_path, "/"
     
     def _convert_cron_format(self, cron_str):
         """转换cron表达式格式，确保兼容性

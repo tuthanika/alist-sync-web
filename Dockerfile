@@ -43,4 +43,4 @@ ENV PORT=52441
 EXPOSE 52441
 
 # 运行应用程序
-CMD ["python", "wsgi.py"] 
+CMD ["python", "startup.py"]

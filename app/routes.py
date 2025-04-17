@@ -666,6 +666,115 @@ def get_storages():
         if 'alist' in locals():
             alist.close()
 
+@api_bp.route('/storages_all', methods=['GET'])
+def get_all_storages():
+    """获取所有连接的存储列表"""
+    try:
+        data_manager = current_app.config['DATA_MANAGER']
+        
+        # 记录请求日志
+        data_manager.add_log({
+            "level": "INFO",
+            "message": "获取所有连接的存储列表",
+            "details": {"request_from": request.remote_addr}
+        })
+        
+        # 获取所有连接
+        connections = data_manager.get_connections()
+        
+        if not connections:
+            data_manager.add_log({
+                "level": "WARNING",
+                "message": "没有可用的连接"
+            })
+            return jsonify({
+                "status": "success",
+                "data": [],
+                "message": "没有可用的连接"
+            })
+        
+        # 存储所有连接的存储列表
+        all_storages = []
+        
+        # 遍历所有连接
+        for connection in connections:
+            conn_id = connection.get('connection_id')
+            
+            # 创建AlistSync实例
+            alist = None
+            try:
+                alist = AlistSync(
+                    connection.get('server'),
+                    connection.get('username'),
+                    connection.get('password'),
+                    connection.get('token')
+                )
+                
+                # 尝试登录
+                login_success = alist.login()
+                if not login_success:
+                    data_manager.add_log({
+                        "level": "WARNING",
+                        "message": f"连接 {conn_id} 登录失败",
+                        "details": {"connection_id": conn_id, "name": connection.get('name')}
+                    })
+                    continue
+                
+                # 获取存储列表
+                storage_list = alist.get_storage_list()
+                
+                # 如果获取到的不是列表，跳过
+                if not isinstance(storage_list, list) or not storage_list:
+                    continue
+                
+                # 添加到总列表中
+                for storage in storage_list:
+                    if isinstance(storage, str):
+                        all_storages.append({
+                            'id': storage,
+                            'name': storage,
+                            'connection_id': conn_id,
+                            'connection_name': connection.get('name')
+                        })
+            except Exception as e:
+                data_manager.add_log({
+                    "level": "WARNING",
+                    "message": f"获取连接 {conn_id} 的存储列表失败",
+                    "details": {"error": str(e), "connection_id": conn_id}
+                })
+                continue
+            finally:
+                # 确保关闭连接
+                if alist:
+                    alist.close()
+        
+        # 记录成功日志
+        data_manager.add_log({
+            "level": "INFO",
+            "message": "获取所有连接的存储列表成功",
+            "details": {"count": len(all_storages)}
+        })
+        
+        return jsonify({
+            "status": "success",
+            "data": all_storages
+        })
+            
+    except Exception as e:
+        # 记录错误
+        if 'data_manager' in locals():
+            data_manager.add_log({
+                "level": "ERROR",
+                "message": "获取所有存储列表失败",
+                "details": {"error": str(e)}
+            })
+        
+        import traceback
+        error_details = traceback.format_exc()
+        current_app.logger.error(f"获取所有存储列表异常: {error_details}")
+        
+        return jsonify({"status": "error", "message": f"获取所有存储列表失败: {str(e)}"}), 500
+
 @api_bp.route('/dashboard/stats', methods=['GET'])
 def dashboard_stats():
     """获取仪表板统计数据"""

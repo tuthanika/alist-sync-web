@@ -374,6 +374,34 @@
         // 加载所有连接
         loadConnections();
         
+        // 初始化检查同步模式，如有必要则禁用差异项处理策略
+        function initSyncTypeHandling() {
+            // 检查添加任务表单
+            const syncType = document.getElementById('syncType');
+            if (syncType.value === 'file_move') {
+                const syncDiffAction = document.getElementById('syncDiffAction');
+                syncDiffAction.value = 'none';
+                syncDiffAction.disabled = true;
+                syncDiffAction.parentElement.querySelector('.form-text').textContent = '注意："文件移动"模式下，差异项处理策略已被禁用';
+            }
+            
+            // 检查编辑任务表单
+            const editSyncType = document.getElementById('editSyncType');
+            if (editSyncType.value === 'file_move') {
+                const editSyncDiffAction = document.getElementById('editSyncDiffAction');
+                editSyncDiffAction.value = 'none';
+                editSyncDiffAction.disabled = true;
+                editSyncDiffAction.parentElement.querySelector('.form-text').textContent = '注意："文件移动"模式下，差异项处理策略已被禁用';
+            }
+        }
+        
+        // 初始检查
+        initSyncTypeHandling();
+        
+        // 监听模态框打开事件，确保状态正确
+        document.getElementById('addTaskModal').addEventListener('show.bs.modal', initSyncTypeHandling);
+        document.getElementById('editTaskModal').addEventListener('show.bs.modal', initSyncTypeHandling);
+        
         // 连接选择器变更事件
         document.getElementById('connectionSelector').addEventListener('change', function() {
             const connId = this.value;
@@ -433,6 +461,19 @@
             } else {
                 editSyncDiffAction.disabled = false;
                 editSyncDiffAction.parentElement.querySelector('.form-text').textContent = '注意：选择"文件移动"模式时，差异项处理策略将被禁用';
+            }
+        });
+        
+        // 添加任务表单中的同步模式变更逻辑
+        document.getElementById('syncType').addEventListener('change', function() {
+            const syncDiffAction = document.getElementById('syncDiffAction');
+            if (this.value === 'file_move') {
+                syncDiffAction.value = 'none';
+                syncDiffAction.disabled = true;
+                syncDiffAction.parentElement.querySelector('.form-text').textContent = '注意："文件移动"模式下，差异项处理策略已被禁用';
+            } else {
+                syncDiffAction.disabled = false;
+                syncDiffAction.parentElement.querySelector('.form-text').textContent = '注意：选择"文件移动"模式时，差异项处理策略将被禁用';
             }
         });
         
