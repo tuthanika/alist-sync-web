@@ -525,6 +525,7 @@ class AlistSync:
                         return True
 
                     # 检查是否在未完成的任务列表中，如果存在，则跳过
+                    self.get_copy_task_undone()
                     for task_item in self.task_list:
                         if src_dir in task_item and dst_dir in task_item and src_path in task_item:
                             logger.info(f"文件【{item_name}】在未完成的任务列表中，跳过复制")
