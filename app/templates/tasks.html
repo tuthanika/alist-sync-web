@@ -163,6 +163,9 @@
                                                             {% elif task.sync_diff_action == 'delete' %}删除
                                                             {% endif %}
                                                         </div>
+                                                        <div class="mb-2">
+                                                            <strong>排除目录:</strong> {{ task.exclude_dirs or "无" }}
+                                                        </div>
                                                     </div>
                                                     <div class="col-md-6">
                                                         <div class="mb-2">
@@ -252,6 +255,12 @@
                             <label for="targetPath" class="form-label">目标路径</label>
                             <input type="text" class="form-control" id="targetPath" placeholder="/" required>
                         </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="excludeDirs" class="form-label">排除目录</label>
+                        <input type="text" class="form-control" id="excludeDirs" placeholder="/">
+                        <div class="form-text">相对于源路径，多个目录用英文逗号分隔</div>
                     </div>
                     
                     <div class="mb-3">
@@ -359,6 +368,12 @@
                             <label for="editTargetPath" class="form-label">目标路径</label>
                             <input type="text" class="form-control" id="editTargetPath" placeholder="/" required>
                         </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="editExcludeDirs" class="form-label">排除目录</label>
+                        <input type="text" class="form-control" id="editExcludeDirs" placeholder="/">
+                        <div class="form-text">相对于源路径，多个目录用英文逗号分隔</div>
                     </div>
                     
                     <div class="mb-3">
@@ -737,6 +752,7 @@
                 target_connection_names: Array.from(document.querySelectorAll('#targetConnections option:checked')).map(opt => opt.text).join(', '),
                 source_path: document.getElementById('sourcePath').value,
                 target_path: document.getElementById('targetPath').value,
+                exclude_dirs: document.getElementById('excludeDirs').value,
                 sync_type: document.getElementById('syncType').value,
                 sync_diff_action: document.getElementById('syncDiffAction').value,
                 schedule: document.getElementById('schedule').value,
@@ -867,6 +883,7 @@
                     // 新增：最小/最大文件大小
                     document.getElementById('editSizeMin').value = task.size_min != null ? task.size_min : '';
                     document.getElementById('editSizeMax').value = task.size_max != null ? task.size_max : '';
+                    document.getElementById('editExcludeDirs').value = task.exclude_dirs || '';
                     document.getElementById('editTaskEnabled').checked = task.enabled !== false;
                     
                     // 先加载所有连接，然后选择任务使用的连接并加载存储列表
@@ -934,6 +951,7 @@
                 target_connection_names: Array.from(document.querySelectorAll('#editTargetConnections option:checked')).map(opt => opt.text).join(', '),
                 source_path: document.getElementById('editSourcePath').value,
                 target_path: document.getElementById('editTargetPath').value,
+                exclude_dirs: document.getElementById('editExcludeDirs').value,
                 sync_type: document.getElementById('editSyncType').value,
                 sync_diff_action: document.getElementById('editSyncDiffAction').value,
                 schedule: document.getElementById('editSchedule').value,
@@ -1602,6 +1620,9 @@
                                                 <div class="mb-2">
                                                     <strong>差异项处理:</strong> ${diffActionText}
                                                 </div>
+                                                <div class="mb-2">
+                                                    <strong>排除目录:</strong> ${task.exclude_dirs || '无'}
+                                                </div>
                                             </div>
                                             <div class="col-md-6">
                                                 <div class="mb-2">
@@ -1692,6 +1713,7 @@
                         // 最小/最大文件大小
                         document.getElementById('editSizeMin').value = task.size_min != null ? task.size_min : '';
                         document.getElementById('editSizeMax').value = task.size_max != null ? task.size_max : '';
+                        document.getElementById('editExcludeDirs').value = task.exclude_dirs || '';
                         document.getElementById('editTaskEnabled').checked = task.enabled !== false;
                         
                         // 先加载所有连接，然后选择任务使用的连接并加载存储列表

@@ -401,6 +401,7 @@ class SyncManager:
             
             # 设置同步目录
             dir_pairs = []
+            exclude_dirs = []
             for target_id in target_connection_ids:
                 # 修复source_connection_id和target_connection_ids为路径格式的情况
                 source_pair = source_connection_id
@@ -422,23 +423,34 @@ class SyncManager:
                 # 构建完整的目录对
                 dir_pair = f"{source_pair}{source_path}:{target_pair}{target_path}".replace('//', '/')
                 dir_pairs.append(dir_pair)
+
+                if task.get("exclude_dirs"):
+                    excludes = task.get("exclude_dirs").split(",")
+                    for exclude in excludes:
+                        exclude_dir = f"{source_pair}/{exclude}".replace('//', '/')
+                        exclude_dirs.append(exclude_dir)
             
             if dir_pairs:
                 os.environ["DIR_PAIRS"] = ";".join(dir_pairs)
                 data_manager._append_task_log(task_id, instance_id, f"设置同步目录对: {os.environ['DIR_PAIRS']}")
                 
                 # 设置排除目录
+                if exclude_dirs:
+                    os.environ["EXCLUDE_DIRS"] = ",".join(exclude_dirs)
+                    data_manager._append_task_log(task_id, instance_id, f"设置排除目录: {os.environ['EXCLUDE_DIRS']}")
+                
+                # 设置排除文件
                 if task.get("file_filter"):
                     os.environ["REGEX_PATTERNS"] = task.get("file_filter")
                     data_manager._append_task_log(task_id, instance_id, f"设置文件过滤: {os.environ['REGEX_PATTERNS']}")
                 
                 # 设置最小/最大文件大小
                 if task.get("size_min"):
-                    os.environ["SIZE_MIN"] = task.get("size_min")
+                    os.environ["SIZE_MIN"] = str(task.get("size_min"))
                     data_manager._append_task_log(task_id, instance_id, f"设置最小文件大小: {os.environ['SIZE_MIN']}")
 
                 if task.get("size_max"):
-                    os.environ["SIZE_MAX"] = task.get("size_max")
+                    os.environ["SIZE_MAX"] = str(task.get("size_max"))
                     data_manager._append_task_log(task_id, instance_id, f"设置最大文件大小: {os.environ['SIZE_MAX']}")
                 
                 # 执行主函数
