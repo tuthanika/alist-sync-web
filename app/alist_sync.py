@@ -234,11 +234,8 @@ class AlistSync:
         if response and response.get("data", []):
             for item in response["data"]:
                 name = item["name"]
-                try:
-                    result = name.replace("](", "")
-                    name_list.append(result)
-                except IndexError:
-                    print(f"字符串 '{name}' 未找到匹配的切分字符串。")
+                result = name.replace("](", "")
+                name_list.append(result)
         self.task_list = name_list
         return True
         # return name_list
