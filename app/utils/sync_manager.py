@@ -432,6 +432,15 @@ class SyncManager:
                     os.environ["REGEX_PATTERNS"] = task.get("file_filter")
                     data_manager._append_task_log(task_id, instance_id, f"设置文件过滤: {os.environ['REGEX_PATTERNS']}")
                 
+                # 设置最小/最大文件大小
+                if task.get("size_min"):
+                    os.environ["SIZE_MIN"] = task.get("size_min")
+                    data_manager._append_task_log(task_id, instance_id, f"设置最小文件大小: {os.environ['SIZE_MIN']}")
+
+                if task.get("size_max"):
+                    os.environ["SIZE_MAX"] = task.get("size_max")
+                    data_manager._append_task_log(task_id, instance_id, f"设置最大文件大小: {os.environ['SIZE_MAX']}")
+                
                 # 执行主函数
                 data_manager._append_task_log(task_id, instance_id, "开始执行同步...")
                 
