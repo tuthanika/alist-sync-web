@@ -420,3 +420,8 @@ body {
     background-color: var(--accent-color);
     border-radius: 50%;
 } 
+
+/* 增加弹窗的z-index值以确保其显示在模态框上方 */
+.alert {
+    z-index: 99999999;
+}
