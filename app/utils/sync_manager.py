@@ -421,7 +421,7 @@ class SyncManager:
                     target_pair = f"/{target_id}"
                 
                 # 构建完整的目录对
-                dir_pair = f"{source_pair}{source_path}:{target_pair}{target_path}".replace('//', '/')
+                dir_pair = f"/{source_pair}/{source_path}:/{target_pair}/{target_path}".replace('//', '/')
                 dir_pairs.append(dir_pair)
 
                 if task.get("exclude_dirs"):
