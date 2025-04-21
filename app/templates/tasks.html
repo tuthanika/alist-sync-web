@@ -163,6 +163,9 @@
                                                             {% elif task.sync_diff_action == 'delete' %}删除
                                                             {% endif %}
                                                         </div>
+                                                        <div class="mb-2">
+                                                            <strong>排除目录:</strong> {{ task.exclude_dirs or "无" }}
+                                                        </div>
                                                     </div>
                                                     <div class="col-md-6">
                                                         <div class="mb-2">
@@ -255,6 +258,12 @@
                     </div>
                     
                     <div class="mb-3">
+                        <label for="excludeDirs" class="form-label">排除目录</label>
+                        <input type="text" class="form-control" id="excludeDirs" placeholder="/">
+                        <div class="form-text">相对于源路径，多个目录用英文逗号分隔</div>
+                    </div>
+                    
+                    <div class="mb-3">
                         <label for="syncType" class="form-label">同步模式</label>
                         <select class="form-select" id="syncType" required>
                             <option value="file_sync">文件同步</option>
@@ -281,6 +290,17 @@
                     <div class="mb-3">
                         <label for="fileFilter" class="form-label">文件过滤 (正则表达式，留空表示无过滤)</label>
                         <input type="text" class="form-control" id="fileFilter" placeholder="\.jpg$|\.png$">
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="sizeMin" class="form-label">最小文件大小 (字节, 可选)</label>
+                            <input type="number" class="form-control" id="sizeMin" min="0" placeholder="仅传输大于此大小的文件">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="sizeMax" class="form-label">最大文件大小 (字节, 可选)</label>
+                            <input type="number" class="form-control" id="sizeMax" min="0" placeholder="仅传输小于此大小的文件">
+                        </div>
                     </div>
                     
                     <div class="form-check form-switch mb-3">
@@ -351,6 +371,12 @@
                     </div>
                     
                     <div class="mb-3">
+                        <label for="editExcludeDirs" class="form-label">排除目录</label>
+                        <input type="text" class="form-control" id="editExcludeDirs" placeholder="/">
+                        <div class="form-text">相对于源路径，多个目录用英文逗号分隔</div>
+                    </div>
+                    
+                    <div class="mb-3">
                         <label for="editSyncType" class="form-label">同步模式</label>
                         <select class="form-select" id="editSyncType" required>
                             <option value="file_sync">文件同步</option>
@@ -377,6 +403,17 @@
                     <div class="mb-3">
                         <label for="editFileFilter" class="form-label">文件过滤 (正则表达式，留空表示无过滤)</label>
                         <input type="text" class="form-control" id="editFileFilter" placeholder="\.jpg$|\.png$">
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="editSizeMin" class="form-label">最小文件大小 (字节, 可选)</label>
+                            <input type="number" class="form-control" id="editSizeMin" min="0" placeholder="仅传输大于此大小的文件">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="editSizeMax" class="form-label">最大文件大小 (字节, 可选)</label>
+                            <input type="number" class="form-control" id="editSizeMax" min="0" placeholder="仅传输小于此大小的文件">
+                        </div>
                     </div>
                     
                     <div class="form-check form-switch mb-3">
@@ -715,10 +752,13 @@
                 target_connection_names: Array.from(document.querySelectorAll('#targetConnections option:checked')).map(opt => opt.text).join(', '),
                 source_path: document.getElementById('sourcePath').value,
                 target_path: document.getElementById('targetPath').value,
+                exclude_dirs: document.getElementById('excludeDirs').value,
                 sync_type: document.getElementById('syncType').value,
                 sync_diff_action: document.getElementById('syncDiffAction').value,
                 schedule: document.getElementById('schedule').value,
                 file_filter: document.getElementById('fileFilter').value,
+                size_min: document.getElementById('sizeMin').value ? parseInt(document.getElementById('sizeMin').value) : null,
+                size_max: document.getElementById('sizeMax').value ? parseInt(document.getElementById('sizeMax').value) : null,
                 enabled: document.getElementById('taskEnabled').checked
             };
             
@@ -840,6 +880,10 @@
                     document.getElementById('editSyncDiffAction').value = task.sync_diff_action || 'none';
                     document.getElementById('editSchedule').value = task.schedule || '';
                     document.getElementById('editFileFilter').value = task.file_filter || '';
+                    // 新增：最小/最大文件大小
+                    document.getElementById('editSizeMin').value = task.size_min != null ? task.size_min : '';
+                    document.getElementById('editSizeMax').value = task.size_max != null ? task.size_max : '';
+                    document.getElementById('editExcludeDirs').value = task.exclude_dirs || '';
                     document.getElementById('editTaskEnabled').checked = task.enabled !== false;
                     
                     // 先加载所有连接，然后选择任务使用的连接并加载存储列表
@@ -907,10 +951,13 @@
                 target_connection_names: Array.from(document.querySelectorAll('#editTargetConnections option:checked')).map(opt => opt.text).join(', '),
                 source_path: document.getElementById('editSourcePath').value,
                 target_path: document.getElementById('editTargetPath').value,
+                exclude_dirs: document.getElementById('editExcludeDirs').value,
                 sync_type: document.getElementById('editSyncType').value,
                 sync_diff_action: document.getElementById('editSyncDiffAction').value,
                 schedule: document.getElementById('editSchedule').value,
                 file_filter: document.getElementById('editFileFilter').value,
+                size_min: document.getElementById('editSizeMin').value ? parseInt(document.getElementById('editSizeMin').value) : null,
+                size_max: document.getElementById('editSizeMax').value ? parseInt(document.getElementById('editSizeMax').value) : null,
                 enabled: document.getElementById('editTaskEnabled').checked
             };
             
@@ -1573,6 +1620,9 @@
                                                 <div class="mb-2">
                                                     <strong>差异项处理:</strong> ${diffActionText}
                                                 </div>
+                                                <div class="mb-2">
+                                                    <strong>排除目录:</strong> ${task.exclude_dirs || '无'}
+                                                </div>
                                             </div>
                                             <div class="col-md-6">
                                                 <div class="mb-2">
@@ -1659,6 +1709,11 @@
                         document.getElementById('editSyncDiffAction').value = task.sync_diff_action || 'none';
                         document.getElementById('editSchedule').value = task.schedule || '';
                         document.getElementById('editFileFilter').value = task.file_filter || '';
+                        
+                        // 最小/最大文件大小
+                        document.getElementById('editSizeMin').value = task.size_min != null ? task.size_min : '';
+                        document.getElementById('editSizeMax').value = task.size_max != null ? task.size_max : '';
+                        document.getElementById('editExcludeDirs').value = task.exclude_dirs || '';
                         document.getElementById('editTaskEnabled').checked = task.enabled !== false;
                         
                         // 先加载所有连接，然后选择任务使用的连接并加载存储列表
@@ -1952,4 +2007,4 @@
         }
     });
 </script>
-{% endblock %} 
+{% endblock %}

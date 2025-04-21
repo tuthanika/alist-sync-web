@@ -875,7 +875,8 @@ class DataManager:
             
             # 获取计划和文件过滤器
             schedule = self._convert_cron_format(sync_task.get("cron", ""))
-            file_filter = sync_task.get("excludeDirs", "")
+            file_filter = sync_task.get("regexPatterns", "")
+            exclude_dirs = sync_task.get("excludeDirs", "")
             
             # --------- 处理不同的路径格式 ---------
             
@@ -922,6 +923,7 @@ class DataManager:
                         "sync_diff_action": sync_del_action,
                         "schedule": schedule,
                         "file_filter": file_filter,
+                        "exclude_dirs": exclude_dirs,
                         "enabled": True,
                         "created_at": self.format_timestamp(int(time.time())),
                         "updated_at": self.format_timestamp(int(time.time())),
@@ -960,6 +962,7 @@ class DataManager:
                     "sync_diff_action": sync_del_action,
                     "schedule": schedule,
                     "file_filter": file_filter,
+                    "exclude_dirs": exclude_dirs,
                     "enabled": True,
                     "created_at": self.format_timestamp(int(time.time())),
                     "updated_at": self.format_timestamp(int(time.time())),
@@ -1008,6 +1011,7 @@ class DataManager:
                     "sync_diff_action": sync_del_action,
                     "schedule": schedule,
                     "file_filter": file_filter,
+                    "exclude_dirs": exclude_dirs,
                     "enabled": True,
                     "created_at": self.format_timestamp(int(time.time())),
                     "updated_at": self.format_timestamp(int(time.time())),

@@ -84,7 +84,7 @@ def parse_time_and_adjust_utc(date_str: str) -> datetime:
 class AlistSync:
     def __init__(self, base_url: str, username: str = None, password: str = None, token: str = None,
                  sync_delete_action: str = "none", exclude_list: List[str] = None, move_file_action: bool = False,
-                 regex_patterns_list=None, regex_pattern=None,
+                 regex_patterns_list=None, regex_pattern=None, size_min: int = None, size_max: int = None,
                  task_list: List[str] = None):
         """
         初始化AlistSync类
@@ -102,6 +102,8 @@ class AlistSync:
             move_file_action: 是否移动源文件
             regex_patterns_list: 正则表达式模式列表
             regex_pattern: 正则表达式模式
+            size_min: 仅传输大于指定大小的文件（字节，默认关闭）
+            size_max: 仅传输小于指定大小的文件（字节，默认关闭）
             task_list: 任务列表
         """
         if regex_patterns_list is None:
@@ -118,6 +120,8 @@ class AlistSync:
         self.move_file_action = move_file_action
         self.regex_patterns_list = regex_patterns_list
         self.regex_pattern = regex_pattern
+        self.size_min = size_min
+        self.size_max = size_max
 
     def _create_connection(self) -> Union[http.client.HTTPConnection, http.client.HTTPSConnection]:
         """创建HTTP(S)连接"""
@@ -234,11 +238,8 @@ class AlistSync:
         if response and response.get("data", []):
             for item in response["data"]:
                 name = item["name"]
-                try:
-                    result = name.replace("](", "")
-                    name_list.append(result)
-                except IndexError:
-                    print(f"字符串 '{name}' 未找到匹配的切分字符串。")
+                result = name.replace("](", "")
+                name_list.append(result)
         self.task_list = name_list
         return True
         # return name_list
@@ -381,25 +382,25 @@ class AlistSync:
     def _recursive_copy(self, src_dir: str, dst_dir: str) -> bool:
         """递归复制目录内容"""
         try:
-            if src_dir in self.exclude_list:
-                logger.info(f"排除目录: {src_dir}, 跳过同步")
-                return True
-            else:
-                logger.info(f"开始递归复制 - 源目录: {src_dir}, 目标目录: {dst_dir}")
-                src_contents = self.get_directory_contents(src_dir)
-                if not src_contents:
-                    logger.info(f"源目录为空或获取内容失败: {src_dir}")
-                    # return True
+            for exclude_item in self.exclude_list:
+                if src_dir.startswith(exclude_item) and exclude_item != '':
+                    logger.info(f"排除目录: {src_dir}, 跳过同步")
+                    return True
+            logger.info(f"开始递归复制 - 源目录: {src_dir}, 目标目录: {dst_dir}")
+            src_contents = self.get_directory_contents(src_dir)
+            if not src_contents:
+                logger.info(f"源目录为空或获取内容失败: {src_dir}")
+                # return True
 
-                if self.sync_delete:
-                    self._handle_sync_delete(src_dir, dst_dir, src_contents)
-                if src_contents:
-                    for item in src_contents:
-                        if not self._copy_item_with_check(src_dir, dst_dir, item):
-                            logger.error(f"复制项目失败: {item.get('name', '未知项目')}")
-                            return False
-                    logger.info(f"递归复制完成 - 源目录: {src_dir}, 目标目录: {dst_dir}")
-                return True
+            if self.sync_delete:
+                self._handle_sync_delete(src_dir, dst_dir, src_contents)
+            if src_contents:
+                for item in src_contents:
+                    if not self._copy_item_with_check(src_dir, dst_dir, item):
+                        logger.error(f"复制项目失败: {item.get('name', '未知项目')}")
+                        return False
+                logger.info(f"递归复制完成 - 源目录: {src_dir}, 目标目录: {dst_dir}")
+            return True
         except Exception as e:
             logger.error(f"递归复制失败: {str(e)}")
         return False
@@ -498,9 +499,10 @@ class AlistSync:
                 return False
 
             logger.info(f"处理项目: {item_name}")
-            if src_dir in self.exclude_list:
-                logger.info(f"排除目录: {src_dir}, 跳过同步")
-                return True
+            for exclude_item in self.exclude_list:
+                if src_dir.startswith(exclude_item) and exclude_item != '':
+                    logger.info(f"排除目录: {src_dir}, 跳过同步")
+                    return True
 
             # 处理文件
             src_path = f"{src_dir}/{item_name}".replace('//', '/')
@@ -520,6 +522,14 @@ class AlistSync:
                 # 递归复制子目录
                 return self._recursive_copy(src_path, dst_path)
             else:
+                # 文件大小过滤
+                file_size = item.get("size")
+                if self.size_min is not None and file_size is not None and file_size < self.size_min:
+                    logger.info(f"文件【{item_name}】小于最小传输大小({self.size_min}字节)，跳过同步")
+                    return True
+                if self.size_max is not None and file_size is not None and file_size > self.size_max:
+                    logger.info(f"文件【{item_name}】大于最大传输大小({self.size_max}字节)，跳过同步")
+                    return True
 
                 # 判断正则表达式,如果符合正则表达式跳过复制
                 if(self.regex_patterns_list or self.regex_pattern):
@@ -528,6 +538,7 @@ class AlistSync:
                         return True
 
                     # 检查是否在未完成的任务列表中，如果存在，则跳过
+                    self.get_copy_task_undone()
                     for task_item in self.task_list:
                         if src_dir in task_item and dst_dir in task_item and src_path in task_item:
                             logger.info(f"文件【{item_name}】在未完成的任务列表中，跳过复制")
@@ -605,7 +616,7 @@ def get_dir_pairs_from_env() -> List[str]:
 
 
 def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str = None, move_file: bool = False,
-         regex_patterns: str = None, ):
+         regex_patterns: str = None, size_min: int = None, size_max: int = None):
     """
     主函数，用于命令行执行
     
@@ -618,6 +629,8 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
         exclude_dirs: 排除的目录，多个目录用逗号分隔
         move_file: 是否移动源文件，默认为False
         regex_patterns: 正则表达式模式
+        size_min: 仅传输大于指定大小的文件（字节，默认关闭）
+        size_max: 仅传输小于指定大小的文件（字节，默认关闭）
     """
     code_souce()
     xiaojin()
@@ -686,6 +699,14 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
     except re.error as e:
         print(f"正则表达式 {regex_patterns} 编译失败：{e}")
 
+    # 解析文件大小限制
+    if size_min is None:
+        size_min_env = os.environ.get("SIZE_MIN")
+        size_min = int(size_min_env) if size_min_env and size_min_env.isdigit() else None
+    if size_max is None:
+        size_max_env = os.environ.get("SIZE_MAX")
+        size_max = int(size_max_env) if size_max_env and size_max_env.isdigit() else None
+
     if not base_url:
         logger.error("服务地址(BASE_URL)环境变量未设置")
         return
@@ -700,7 +721,7 @@ def main(dir_pairs: str = None, sync_del_action: str = None, exclude_dirs: str =
 
     # 创建AlistSync实例时添加token参数
     alist_sync = AlistSync(base_url, username, password, token, sync_delete_action, exclude_list, move_file_action,
-                           regex_and_replace_list, regex_pattern)
+                           regex_and_replace_list, regex_pattern, size_min=size_min, size_max=size_max)
     # 验证 token 是否正确
     if not alist_sync.login():
         logger.error("令牌或用户名密码不正确")
