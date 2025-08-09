@@ -338,7 +338,7 @@ class DataManager:
                         task_data[field] = task[field]
                 
                 tasks[i] = task_data
-                # self._write_json(self.tasks_file, tasks)
+                self._write_json(self.tasks_file, tasks)
                 return True
         return False
     
