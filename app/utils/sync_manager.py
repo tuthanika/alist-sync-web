@@ -399,6 +399,10 @@ class SyncManager:
                 os.environ["MOVE_FILE"] = "false"
                 data_manager._append_task_log(task_id, instance_id, "设置为文件同步模式")
             
+            # 设置删除差异项行为
+            os.environ["SYNC_DELETE_ACTION"] = task.get("sync_diff_action", "none")
+            data_manager._append_task_log(task_id, instance_id, f"设置差异项处理方式: {os.environ['SYNC_DELETE_ACTION']}")
+            
             # 设置同步目录
             dir_pairs = []
             exclude_dirs = []
