@@ -7,7 +7,10 @@ import logging
 from typing import List, Dict, Optional, Union
 from logging.handlers import TimedRotatingFileHandler
 from typing import List, Tuple, Pattern
+from urllib.parse import unquote
 
+def normalize_filename(name: str) -> str:
+    return unquote(name.strip())
 
 def setup_logger():
     """配置日志记录器"""
@@ -428,11 +431,11 @@ class AlistSync:
             dst_contents = self.get_directory_contents(dst_dir)
             src_names = {}
             if src_contents:
-                src_names = {item["name"] for item in src_contents}
+                src_names = {normalize_filename(item["name"]) for item in src_contents}
 
             dst_names = {}
             if dst_contents:
-                dst_names = {item["name"] for item in dst_contents}
+                dst_names = {normalize_filename(item["name"]) for item in dst_contents}
 
             if src_names:
                 to_delete = set(dst_names) - set(src_names)
